@@ -112,8 +112,7 @@ estación siguiente; que el wayfinder la cruzara por él sería ejecutar.
 termina con `/buzz-kickoff docs/specs/login-con-enlace-magico-por.md`.
 
 `/wayfinder JAR-12`
-→ issue, entra por Build, no escribe nada, termina con el paso manual
-(workspace de Conductor llamado `JAR-12`) y `/tdd JAR-12`.
+→ issue, entra por Build, no escribe nada, termina con `/build-kickoff JAR-12`.
 
 `/wayfinder https://github.com/andrulli85/x/pull/4`
 → PR, entra por Review, reporta si la familia opuesta tiene binario, termina

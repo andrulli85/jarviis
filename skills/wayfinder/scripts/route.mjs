@@ -26,7 +26,7 @@ export const STATIONS = JSON.parse(readFileSync(join(here, "..", "stations.json"
    "utf-8" o "gpt-5" en una idea no la manden a Build; con
    JARVIIS_LINEAR_PREFIX se acepta solo ese prefijo, en cualquier caja, para
    que "jar-12" escrito deprisa siga siendo JAR-12. */
-const issueRegex = (prefix) => prefix
+export const issueRegex = (prefix) => prefix
   ? new RegExp("(?<![\\p{L}\\d])(" + prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "-\\d+)(?![\\p{L}\\d])", "iu")
   : /(?<![\p{L}\d])([A-Z]{2,10}-\d+)(?![\p{L}\d])/u;
 const PR_URL = /github\.com\/[^\s/]+\/[^\s/]+\/pull\/(\d+)/i;
@@ -66,13 +66,25 @@ export function slugify(text, max = 5) {
 /* --------------------------------------------------------- availability --- */
 
 /* Una skill existe si hay un SKILL.md bajo su nombre en ~/.claude/skills
-   (personal, enlazada o no) o bajo la caché de plugins. Se mira el disco y no
-   la lista de la sesión porque la lista es una foto de arranque. */
-export function findSkill(name, { skillsDir, pluginsDir }) {
+   (personal, enlazada o no), en .claude/skills del repo actual, o bajo la
+   caché de plugins. Se mira el disco y no la lista de la sesión porque la
+   lista es una foto de arranque.
+
+   Tercer estado: la skill está en skills/ de la fábrica pero no enlazada en
+   ninguno de esos sitios. No es invocable, así que no "existe", pero
+   tampoco hay que construirla: hay que enlazarla, y se dice cómo. */
+export const FACTORY_SKILLS = join(here, "..", "..");
+export function findSkill(name, { skillsDir, pluginsDir, cwd, factoryDir = FACTORY_SKILLS }) {
   const personal = join(skillsDir, name, "SKILL.md");
   if (existsSync(personal)) return { status: "existe", where: personal };
+  if (cwd) {
+    const project = join(cwd, ".claude", "skills", name, "SKILL.md");
+    if (existsSync(project)) return { status: "existe", where: project };
+  }
   const hit = walk(pluginsDir, name, 8);
   if (hit) return { status: "existe", where: hit };
+  const factory = join(factoryDir, name, "SKILL.md");
+  if (existsSync(factory)) return { status: "sin enlazar", where: factory, link: `ln -s ${join(factoryDir, name)} ${join(skillsDir, name)}` };
   return { status: "por construir", where: null };
 }
 
@@ -123,6 +135,7 @@ export function buildRoute(input, world = {}) {
     skillsDir: world.skillsDir || join(homedir(), ".claude", "skills"),
     pluginsDir: world.pluginsDir || join(homedir(), ".claude", "plugins"),
     providers: world.providers || providersStatus(),
+    factoryDir: world.factoryDir || FACTORY_SKILLS,
     linearPrefix: world.linearPrefix ?? process.env.JARVIIS_LINEAR_PREFIX ?? null,
   };
   const text = String(input || "").trim();
@@ -156,7 +169,9 @@ export function buildRoute(input, world = {}) {
   const stations = STATIONS.slice(from).map((s) => {
     const skills = s.skills.map((name) => ({ name, ...findSkill(name, w) }));
     const provider = providerFor(s.provider, w.providers);
-    const status = skills.some((k) => k.status !== "existe") ? "por construir" : s.manual ? "manual" : "existe";
+    const status = skills.some((k) => k.status === "por construir") ? "por construir"
+      : skills.some((k) => k.status === "sin enlazar") ? "sin enlazar"
+      : s.manual ? "manual" : "existe";
     const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
     return { n: s.n, id: s.id, name: s.name, in: s.in, out: s.out, skills, manual: fill(s.manual), provider, status, command: fill(s.command) };
   });
@@ -174,7 +189,7 @@ export function renderMarkdown(r) {
   lines.push(`Entrada: **${r.kind}** → entra por **${r.next.name}**. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
   lines.push("| # | Estación | Entrada → Salida | Skills | Estado |", "|---|---|---|---|---|");
   for (const s of r.stations) {
-    const skills = s.skills.map((k) => `\`${k.name}\`${k.status === "existe" ? "" : " (por construir)"}`).join(", ");
+    const skills = s.skills.map((k) => `\`${k.name}\`${k.status === "existe" ? "" : ` (${k.status})`}`).join(", ");
     const prov = s.provider ? (s.provider.available ? ` · proveedor: ${s.provider.channel}` : ` · **proveedor no disponible**: ${s.provider.why}`) : "";
     lines.push(`| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${prov} |`);
   }
@@ -182,7 +197,11 @@ export function renderMarkdown(r) {
   if (r.questions.length) { lines.push("## Preguntas abiertas", ""); for (const q of r.questions) lines.push(`- ${q}`); lines.push(""); }
   lines.push("## Siguiente paso", "");
   if (r.next.status === "por construir") lines.push(`La estación **${r.next.name}** no tiene skill todavía. Hazla a mano: ${r.stations[0].in} → ${r.stations[0].out}.`);
-  else {
+  else if (r.next.status === "sin enlazar") {
+    lines.push(`La estación **${r.next.name}** tiene skill en la fábrica pero no está enlazada. Enlaza y reinicia la sesión:`, "");
+    for (const k of r.stations[0].skills.filter((k) => k.status === "sin enlazar")) lines.push(`\`${k.link}\``);
+    lines.push("", `Después: \`${r.next.command}\``);
+  } else {
     if (r.next.manual) lines.push(`Manual primero: ${r.next.manual}.`, "");
     lines.push(`\`${r.next.command}\``);
   }

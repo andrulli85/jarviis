@@ -69,7 +69,7 @@ test("slug ASCII, kebab, corto", () => {
 
 /* ---------------------------------------------------------- buildRoute --- */
 
-function fakeWorld({ personal = [], plugin = [], specs = [], git = true, providers } = {}) {
+function fakeWorld({ personal = [], plugin = [], project = [], factory = [], specs = [], git = true, providers } = {}) {
   const root = mkdtempSync(join(tmpdir(), "wayfinder-"));
   const skillsDir = join(root, "skills"); mkdirSync(skillsDir);
   for (const s of personal) { mkdirSync(join(skillsDir, s)); writeFileSync(join(skillsDir, s, "SKILL.md"), "x"); }
@@ -80,9 +80,26 @@ function fakeWorld({ personal = [], plugin = [], specs = [], git = true, provide
   }
   const cwd = join(root, "repo"); mkdirSync(cwd);
   if (git) mkdirSync(join(cwd, ".git"));
+  for (const s of project) { mkdirSync(join(cwd, ".claude", "skills", s), { recursive: true }); writeFileSync(join(cwd, ".claude", "skills", s, "SKILL.md"), "x"); }
+  const factoryDir = join(root, "factory"); mkdirSync(factoryDir);
+  for (const s of factory) { mkdirSync(join(factoryDir, s)); writeFileSync(join(factoryDir, s, "SKILL.md"), "x"); }
   for (const s of specs) { mkdirSync(join(cwd, "docs", "specs"), { recursive: true }); writeFileSync(join(cwd, "docs", "specs", s), "x"); }
-  return { skillsDir, pluginsDir, cwd, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
+  return { skillsDir, pluginsDir, cwd, factoryDir, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
 }
+
+test("una skill del proyecto (.claude/skills) existe; una de la fábrica sin enlazar se distingue y da el ln", () => {
+  const w = fakeWorld({ project: ["git-conventions"], factory: ["build-kickoff"], plugin: ["tdd"] });
+  const build = buildRoute("JAR-1", w).stations.find((s) => s.id === "build");
+  assert.equal(build.skills.find((k) => k.name === "git-conventions").status, "existe");
+  const bk = build.skills.find((k) => k.name === "build-kickoff");
+  assert.equal(bk.status, "sin enlazar");
+  assert.match(bk.link, /^ln -s .*build-kickoff .*skills\/build-kickoff$/);
+  assert.equal(build.status, "sin enlazar");
+  const md = renderMarkdown(buildRoute("JAR-1", w));
+  assert.match(md, /no está enlazada/);
+  assert.match(md, /ln -s/);
+  assert.match(md, /reinicia la sesión/);
+});
 
 test("una idea recorre las cinco estaciones desde Shape", () => {
   const w = fakeWorld();
@@ -128,11 +145,13 @@ test("estado vivo de cada skill: personal, plugin, por construir", () => {
   assert.equal(shape.status, "existe");
 });
 
-test("una estación con paso manual lo dice aunque sus skills existan", () => {
-  const w = fakeWorld({ personal: ["git-conventions"], plugin: ["tdd"] });
-  const build = buildRoute("JAR-1", w).stations.find((s) => s.id === "build");
-  assert.equal(build.status, "manual");
-  assert.match(build.manual, /workspace/i);
+test("Build sin build-kickoff está por construir; con las tres skills, existe y sin paso manual", () => {
+  const sin = buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions"], plugin: ["tdd"] })).stations.find((s) => s.id === "build");
+  assert.equal(sin.status, "por construir");
+  const con = buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] })).stations.find((s) => s.id === "build");
+  assert.equal(con.status, "existe");
+  assert.equal(con.manual, null);
+  assert.equal(con.command, "/build-kickoff JAR-1");
 });
 
 test("proveedores: autor de familia desconocida no tiene opuesto", () => {
@@ -171,11 +190,10 @@ test("la tabla de estaciones es la de stations.json, en orden", () => {
 });
 
 test("renderMarkdown lista estaciones con estado y el siguiente comando", () => {
-  const md = renderMarkdown(buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions"], plugin: ["tdd"] })));
+  const md = renderMarkdown(buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] })));
   assert.match(md, /Build/);
-  assert.match(md, /manual/);
   assert.match(md, /Siguiente/);
-  assert.match(md, /JAR-12/);
-  assert.match(md, /nombre = JAR-12/);
+  assert.match(md, /`\/build-kickoff JAR-12`/);
+  assert.doesNotMatch(md, /manual/);
   assert.doesNotMatch(md, /Shape/);
 });

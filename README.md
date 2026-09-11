@@ -22,7 +22,7 @@ primera estación y a la vez el mapa de todas las demás.
 | 0 | Intake (wayfinder) | idea en texto libre → ruta (estaciones a recorrer, preguntas abiertas) | `wayfinder` | existe (`skills/wayfinder`) |
 | 1 | Shape | idea → spec interrogada | `buzz-kickoff` / `grilling` | existe |
 | 2 | Slice | spec → issues en Linear con dependencias | `to-tickets-linear` | en construcción (`skills/to-tickets-linear`, fork de `to-tickets-jira`) |
-| 3 | Build | issue → workspace Conductor → PR | `tdd`, `git-conventions` | existe (manual: crear workspace) |
+| 3 | Build | issue → workspace Conductor en la rama del issue → PR | `build-kickoff`, `tdd`, `git-conventions` | existe (`skills/build-kickoff`) |
 | 4 | Review | PR → hallazgos verificados | `adversarial-review`, `code-review` | existe |
 | 5 | Ship / Learn | PR mergeado → learning en el vault | `learnings`, `keeper` | existe |
 

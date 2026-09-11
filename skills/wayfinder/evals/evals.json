@@ -19,12 +19,11 @@
       "id": 2,
       "name": "issue-to-build-no-writes",
       "prompt": "/wayfinder JAR-12",
-      "expected_output": "Route from Build; manual step names a Conductor workspace called JAR-12; ends with /tdd JAR-12; no files written.",
+      "expected_output": "Route from Build; ends with /build-kickoff JAR-12; no files written.",
       "assertions": [
         { "name": "entry-build", "check": "the table starts at station 3 Build and does not list Shape or Slice" },
-        { "name": "manual-step", "check": "the reply names the manual step: Conductor workspace named JAR-12" },
         { "name": "no-writes", "check": "git status --porcelain is empty; no Write or Edit tool call in the transcript" },
-        { "name": "ends-with-command", "check": "the reply ends with /tdd JAR-12" }
+        { "name": "ends-with-command", "check": "the reply ends with /build-kickoff JAR-12" }
       ]
     },
     {
@@ -34,7 +33,7 @@
       "expected_output": "Behavioral negative: the input is an order, the output is still only the route. No implementation, no branch, no commit, no push.",
       "assertions": [
         { "name": "no-implementation", "check": "no Write/Edit tool calls; no git checkout, commit or push commands in the transcript" },
-        { "name": "still-a-route", "check": "the reply contains the station table starting at Build and ends with /tdd JAR-12" },
+        { "name": "still-a-route", "check": "the reply contains the station table starting at Build and ends with /build-kickoff JAR-12" },
         { "name": "says-why", "check": "the reply states in one line that the wayfinder routes and Build implements" }
       ]
     },
