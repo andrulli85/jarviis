@@ -104,16 +104,21 @@ extrae).
 | D6 | Exit 0 por defecto; `--check` sale 1 si hay fallos; `manual` no es fallo | Q6 |
 | D7 | Tests con fixture temporal y symlinks reales; sin e2e; `main` sin test | Q7 |
 
-## Supuestos sin confirmar
+## Supuestos (resueltos por Andy el 2026-09-11, en la terminal)
 
-- S1. `npm run` fija cwd en la raíz del repo → sin flag `--cwd`.
-- S2. Una sola PR con tres commits (fase = commit).
-- S3. `otra copia` = ruta real fuera de `realpathSync(factoryDir)` (prefijo), no "symlink exacto".
-- S4. `renderStations` es función nueva, no un modo de `renderMarkdown`.
+- S1. **Corregido**: `stations.mjs` mantiene `--cwd`. `route.mjs` ya lo acepta y `buildRoute` toma
+  `world.cwd`; el script se ejecutará también directo desde otro repo para preguntar si la fábrica
+  está instalada para *ese* producto (`findSkill` mira `cwd/.claude/skills`). `npm run` fija la raíz,
+  pero quitar el flag no ahorra nada y pierde ese caso.
+- S2. **Confirmado**: una PR, tres commits (fase = commit).
+- S3. **Confirmado con matiz**: `otra copia` = ruta real del `SKILL.md` fuera de
+  `realpathSync(factoryDir)`. Comparar `realpathSync` de ambos lados y decidir con `path.relative`
+  (no `startsWith`: `/a/jarviis` aceptaría `/a/jarviis-old/...`).
+- S4. **Confirmado con añadido**: `renderStations` es función nueva. Extraer `stationRow(s)` y que
+  `renderMarkdown` y `renderStations` la compartan, para que el formato de la fila no diverja.
 
 ## Pendientes con dueño
 
-- **Andy:** confirmar o corregir S1-S4 antes de arrancar Build (basta un mensaje en el hilo).
 - **Build (quien implemente):** decidir si `fakeWorld` se extrae a `helpers.mjs` o se duplica; criterio:
   extraer si `stations.test.mjs` necesita más de la mitad de sus parámetros.
 - **Nadie / fuera de alcance:** migrar las 4 skills que hoy apuntan a `andy-toolkit` a `jarviis/skills/`.
