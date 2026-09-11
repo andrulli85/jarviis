@@ -54,7 +54,7 @@ en `fakeWorld` y un parámetro `linked: [...]` que cree symlinks a `factoryDir`.
    y `{ status as providersStatus }` de `../../../providers/index.mjs`.
 2. `collectStations(world = {})` exportada: mismo `world` inyectable que `buildRoute` (cwd, skillsDir,
    pluginsDir, providers, factoryDir); devuelve `{ stations: STATIONS.map(s => stationStatus(s, w)),
-   providers: w.providers, cwd }`. Sin `--cwd`: `npm run` ya fija el cwd en la raíz (S1).
+   providers: w.providers, cwd }`. Acepta `--cwd DIR` igual que `route.mjs` (S1 resuelto).
 3. `renderStations(result)` exportada (S4): tabla `| # | Estación | Entrada → Salida | Skills | Estado |`
    como la del wayfinder, y debajo una línea de pie `Proveedores: claude <ruta|—> · codex <ruta|—> ·
    openrouter <clave presente|—> · autor <familia|—>`. Review sin autor: `opuesta al autor: claude ✓ ·
