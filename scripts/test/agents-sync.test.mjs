@@ -1,42 +1,52 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extract, merge, sync, MARKER, HEADER, SECTION } from "../agents-sync.mjs";
+import { parseAgent, readAgentsDir, roster, buildSection, merge, sync, MARKER, HEADER } from "../agents-sync.mjs";
 
 const MANAGED = `# Buzz Nest\n\nTexto que Buzz regenera.\n\n## Workspace\n- Relay: wss://x\n${MARKER}`;
+const PK = "b1108e7e5e92d0f7ad647adc1ab0781bfdd1ca7243842616d3b8acd1e27cd620";
+const agentFile = (name, extra = "") => `---\nname: ${name}\npubkey: ${PK}\nrol: hace ${name}\ncuando: toca ${name}\n${extra}---\n\nEres ${name}. Instrucciones largas.\n`;
+const README = "# Colmena\n\nPreámbulo.\n\n## Reglas\n\nregla 1\n";
 
-const [OPEN, CLOSE] = SECTION;
-const SOURCE = `# AGENTS.md\n\n## Comandos\n\nnpm test\n\n${OPEN}\n## Equipo\n\nregla 1\n${CLOSE}\n`;
-
-function fixture({ nest, source = SOURCE }) {
+function fixture({ nest, agents = { honey: agentFile("Honey"), fizz: agentFile("Fizz") }, readme = README } = {}) {
   const root = mkdtempSync(join(tmpdir(), "agents-sync-"));
-  const sourcePath = join(root, "AGENTS.md"); writeFileSync(sourcePath, source);
+  const agentsDir = join(root, "agents"); mkdirSync(agentsDir);
+  if (readme !== null) writeFileSync(join(agentsDir, "README.md"), readme);
+  for (const [f, text] of Object.entries(agents)) writeFileSync(join(agentsDir, `${f}.md`), text);
   const nestPath = join(root, "nest.md"); if (nest !== undefined) writeFileSync(nestPath, nest);
-  return { sourcePath, nestPath };
+  return { agentsDir, nestPath };
 }
 
-test("extract devuelve solo lo que hay entre los marcadores de sección", () => {
-  assert.equal(extract(SOURCE), "## Equipo\n\nregla 1");
-  assert.throws(() => extract("# AGENTS.md\n\n## Comandos\n"), /sección/);
+test("parseAgent separa frontmatter y cuerpo, y exige los cuatro campos", () => {
+  const a = parseAgent(agentFile("Honey"));
+  assert.equal(a.name, "Honey"); assert.equal(a.pubkey, PK); assert.equal(a.rol, "hace Honey");
+  assert.equal(a.body, "Eres Honey. Instrucciones largas.");
+  assert.throws(() => parseAgent("---\nname: X\n---\n", "x.md"), /x\.md: falta el campo pubkey/);
+  assert.throws(() => parseAgent("sin nada", "y.md"), /sin frontmatter/);
 });
 
-test("conserva lo gestionado hasta el marcador y pone la fuente debajo con cabecera", () => {
-  const out = merge(`${MANAGED}\n\n## Equipo viejo\n\nregla vieja\n`, "## Equipo\n\nregla 1\n");
-  assert.ok(out.startsWith(MANAGED));
-  assert.equal(out, `${MANAGED}\n\n${HEADER}\n\n## Equipo\n\nregla 1\n`);
-  assert.doesNotMatch(out, /regla vieja/);
+test("readAgentsDir lee README y agentes en orden alfabético, ignorando el README como agente", () => {
+  const f = fixture();
+  const d = readAgentsDir(f.agentsDir);
+  assert.equal(d.readme, README);
+  assert.deepEqual(d.agents.map((a) => a.name), ["Fizz", "Honey"]);
+  assert.throws(() => readAgentsDir(fixture({ readme: null }).agentsDir), /README\.md/);
 });
 
-test("usa el último marcador si hay más de uno", () => {
-  const nest = `${MARKER}\nbloque intermedio\n${MANAGED}\n\nviejo\n`;
-  const out = merge(nest, "nuevo\n");
-  assert.ok(out.startsWith(`${MARKER}\nbloque intermedio\n${MANAGED}`));
-  assert.doesNotMatch(out, /viejo/);
+test("la tabla sale del frontmatter con el pubkey abreviado; el cuerpo no va al nido", () => {
+  const section = buildSection(readAgentsDir(fixture().agentsDir));
+  assert.match(section, /^# Colmena\n\nPreámbulo\.\n\n## Quién hace qué\n/);
+  assert.match(section, /\| Honey \| `b1108e7e…d620` \| hace Honey \| toca Honey \|/);
+  assert.match(section, /\n## Reglas\n\nregla 1$/);
+  assert.doesNotMatch(section, /Instrucciones largas/);
+  assert.equal(roster([]).split("\n").length, 4, "tabla vacía: título, línea en blanco, cabecera y separador");
 });
 
-test("sin marcador no toca nada y explica por qué", () => {
+test("merge conserva lo gestionado hasta el último marcador y pone la sección debajo con cabecera", () => {
+  const out = merge(`${MARKER}\nintermedio\n${MANAGED}\n\n## Viejo\n\nregla vieja\n`, "## Nuevo\n\nregla 1\n");
+  assert.equal(out, `${MARKER}\nintermedio\n${MANAGED}\n\n${HEADER}\n\n## Nuevo\n\nregla 1\n`);
   assert.throws(() => merge("# sin marcador\n", "x"), /marcador/);
 });
 
@@ -44,8 +54,7 @@ test("sync escribe el nido y es idempotente", () => {
   const f = fixture({ nest: `${MANAGED}\n\nviejo\n` });
   assert.equal(sync(f).changed, true);
   const first = readFileSync(f.nestPath, "utf8");
-  assert.match(first, /regla 1/);
-  assert.doesNotMatch(first, /npm test/, "las instrucciones del repo no van al nido");
+  assert.match(first, /regla 1/); assert.match(first, /\| Fizz \|/); assert.doesNotMatch(first, /viejo/);
   assert.equal(sync(f).changed, false);
   assert.equal(readFileSync(f.nestPath, "utf8"), first);
 });
@@ -57,6 +66,5 @@ test("--check no escribe y reporta si difiere", () => {
 });
 
 test("si el nido no existe falla en vez de crearlo", () => {
-  const f = fixture({ nest: undefined });
-  assert.throws(() => sync(f), /Buzz Desktop/);
+  assert.throws(() => sync(fixture({ nest: undefined })), /Buzz Desktop/);
 });
