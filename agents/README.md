@@ -14,6 +14,17 @@ awk 'f; /^---$/ && ++n == 2 { f = 1 }' agents/honey.md \
   | buzz agents draft-update --channel <uuid-del-canal> --agent-name Honey --system-prompt -
 ```
 
+Comprobado el 2026-09-11 con Honey (prueba: una línea de firma en el prompt, que apareció
+en su siguiente respuesta):
+
+- `draft-update` solo prellena el formulario si lo envía **el dueño** de los agentes. Desde
+  otra identidad el relay lo acepta pero Desktop no lo muestra; entonces se pega a mano.
+- Un cambio de prompt exige **Save changes, reabrir Edit Agent para confirmar que
+  persistió, y reiniciar el agente**. El proceso vivo sigue con el prompt anterior.
+- Tras reiniciar la app, las menciones de los dos primeros minutos se pierden.
+- **Respond to** decide a quién contesta cada agente: con *Only me* ignora a las demás
+  identidades, incluida la terminal, sin dar ningún aviso.
+
 Última revisión: 2026-09-11.
 
 Andy (`df3bc9cf…38e6`) es el dueño de todos. Decide; no se le pide permiso para cosas
