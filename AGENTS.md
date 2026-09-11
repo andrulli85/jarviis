@@ -27,7 +27,7 @@ que hace falta está en la librería estándar de Node.
 npm test                     # toda la suite: providers, skills y scripts
 node --test 'skills/wayfinder/test/*.test.mjs'   # una sola carpeta
 npm run ask -- --status      # estado de los proveedores en esta máquina
-npm run agents:sync          # genera la sección de la colmena desde agents/ y la copia a ~/.buzz/AGENTS.md
+npm run agents:sync          # genera el nido (~/.buzz/AGENTS.md + puente CLAUDE.md) desde agents/; luego reiniciar el agente
 ```
 
 Los evals de comportamiento de una skill se corren con
@@ -61,7 +61,8 @@ contra la máquina real.
 ## Colmena de Buzz
 
 Los agentes de Buzz (Honey, Fizz, Pollen, Claude) se definen en `agents/`: un archivo por
-agente con frontmatter y sus instrucciones propias, y `agents/README.md` con las reglas
+agente con frontmatter y su prompt en el cuerpo, y `agents/README.md` con las reglas
 comunes de conversación y lo ya decidido. Esas reglas aplican también dentro del repo.
-`npm run agents:sync` genera de esa carpeta la sección que los agentes leen en cada turno
-en `~/.buzz/AGENTS.md`.
+`npm run agents:sync` genera de esa carpeta lo que los agentes cargan al arrancar
+(`~/.buzz/AGENTS.md`, importado desde `~/.buzz/CLAUDE.md`); tras sincronizar se reinicia
+el agente afectado desde Buzz Desktop.

@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { parseAgent, readAgentsDir, roster, buildSection, merge, sync, MARKER, HEADER } from "../agents-sync.mjs";
+import { join, dirname } from "node:path";
+import { parseAgent, readAgentsDir, roster, instructions, buildSection, merge, bridge, sync, MARKER, HEADER, BRIDGE } from "../agents-sync.mjs";
 
 const MANAGED = `# Buzz Nest\n\nTexto que Buzz regenera.\n\n## Workspace\n- Relay: wss://x\n${MARKER}`;
 const PK = "b1108e7e5e92d0f7ad647adc1ab0781bfdd1ca7243842616d3b8acd1e27cd620";
@@ -35,13 +35,22 @@ test("readAgentsDir lee README y agentes en orden alfabético, ignorando el READ
   assert.throws(() => readAgentsDir(fixture({ readme: null }).agentsDir), /README\.md/);
 });
 
-test("la tabla sale del frontmatter con el pubkey abreviado; el cuerpo no va al nido", () => {
+test("la tabla sale del frontmatter con el pubkey abreviado; el cuerpo va al final bajo su nombre", () => {
   const section = buildSection(readAgentsDir(fixture().agentsDir));
   assert.match(section, /^# Colmena\n\nPreámbulo\.\n\n## Quién hace qué\n/);
   assert.match(section, /\| Honey \| `b1108e7e…d620` \| hace Honey \| toca Honey \|/);
-  assert.match(section, /\n## Reglas\n\nregla 1$/);
-  assert.doesNotMatch(section, /Instrucciones largas/);
+  assert.match(section, /\n## Reglas\n\nregla 1\n\n## Instrucciones por agente\n/);
+  assert.match(section, /### Fizz\n\nEres Fizz\. Instrucciones largas\.\n\n### Honey\n\nEres Honey\. Instrucciones largas\.$/);
   assert.equal(roster([]).split("\n").length, 4, "tabla vacía: título, línea en blanco, cabecera y separador");
+});
+
+test("un agente sin cuerpo no aparece en las instrucciones; sin ninguno, la sección se omite", () => {
+  const sin = parseAgent(agentFile("Mudo").replace(/---\n\nEres Mudo[^]*$/, "---\n"));
+  assert.equal(sin.body, "");
+  assert.doesNotMatch(instructions([sin, parseAgent(agentFile("Honey"))]), /Mudo/);
+  assert.equal(instructions([sin]), "");
+  const d = readAgentsDir(fixture({ agents: { mudo: agentFile("Mudo").replace(/---\n\nEres Mudo[^]*$/, "---\n") } }).agentsDir);
+  assert.doesNotMatch(buildSection(d), /Instrucciones por agente/);
 });
 
 test("merge conserva lo gestionado hasta el último marcador y pone la sección debajo con cabecera", () => {
@@ -54,15 +63,33 @@ test("sync escribe el nido y es idempotente", () => {
   const f = fixture({ nest: `${MANAGED}\n\nviejo\n` });
   assert.equal(sync(f).changed, true);
   const first = readFileSync(f.nestPath, "utf8");
-  assert.match(first, /regla 1/); assert.match(first, /\| Fizz \|/); assert.doesNotMatch(first, /viejo/);
+  assert.match(first, /regla 1/); assert.match(first, /\| Fizz \|/); assert.match(first, /### Honey\n\nEres Honey/); assert.doesNotMatch(first, /viejo/);
   assert.equal(sync(f).changed, false);
   assert.equal(readFileSync(f.nestPath, "utf8"), first);
+});
+
+test("bridge: crea CLAUDE.md con @AGENTS.md, respeta uno que ya lo tiene, lo añade a uno que no", () => {
+  assert.equal(bridge(null), `${BRIDGE}\n`);
+  assert.equal(bridge(`# mío\n\n${BRIDGE}\n`), `# mío\n\n${BRIDGE}\n`);
+  assert.equal(bridge("# mío\n"), `# mío\n\n${BRIDGE}\n`);
+});
+
+test("sync escribe el CLAUDE.md puente junto al nido y no lo reescribe si ya vale", () => {
+  const f = fixture({ nest: `${MANAGED}\n` });
+  const r = sync(f);
+  assert.equal(r.bridgePath, join(dirname(f.nestPath), "CLAUDE.md"));
+  assert.equal(readFileSync(r.bridgePath, "utf8"), `${BRIDGE}\n`);
+  assert.equal(sync(f).changed, false);
+  writeFileSync(r.bridgePath, "# notas\n");
+  assert.equal(sync(f).changed, true);
+  assert.equal(readFileSync(r.bridgePath, "utf8"), `# notas\n\n${BRIDGE}\n`);
 });
 
 test("--check no escribe y reporta si difiere", () => {
   const f = fixture({ nest: `${MANAGED}\n\nviejo\n` });
   assert.equal(sync({ ...f, check: true }).changed, true);
   assert.match(readFileSync(f.nestPath, "utf8"), /viejo/);
+  assert.equal(existsSync(join(dirname(f.nestPath), "CLAUDE.md")), false);
 });
 
 test("si el nido no existe falla en vez de crearlo", () => {

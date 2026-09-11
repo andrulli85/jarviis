@@ -107,4 +107,4 @@ asume sin preguntar.
 | `docs/specs/` | Una spec por trabajo (`<slug>.md`), salida de Shape y entrada de Slice |
 | `docs/tickets/` | Borrador de issues por spec (`<slug>.json`), lo escribe `to-tickets-linear` y guarda las claves tras publicar |
 | `AGENTS.md` | Instrucciones para agentes de código que trabajan en el repo (estructura, comandos, convenciones), en el formato estándar |
-| `agents/` | Un archivo por agente de Buzz (frontmatter `name`/`pubkey`/`rol`/`cuando` + sus instrucciones) y `README.md` con las reglas comunes. `npm run agents:sync` genera de ahí la sección que los agentes leen en cada turno y la copia debajo del bloque gestionado de `~/.buzz/AGENTS.md`; `--check` sale 1 si el nido está desactualizado |
+| `agents/` | Un archivo por agente de Buzz (frontmatter `name`/`pubkey`/`rol`/`cuando` + su prompt en el cuerpo) y `README.md` con las reglas comunes. `npm run agents:sync` genera de ahí `~/.buzz/AGENTS.md` (y el puente `~/.buzz/CLAUDE.md`) que los agentes cargan al arrancar; `--check` sale 1 si el nido está desactualizado |

@@ -1,29 +1,36 @@
 # Colmena de Buzz
 
-Reglas comunes de los agentes de Buzz. Cada agente tiene su archivo en `jarviis/agents/` con
-frontmatter (`name`, `pubkey`, `rol`, `cuando`) y sus instrucciones propias en el cuerpo;
-`npm run agents:sync` genera de ahí la tabla "Quién hace qué" y la copia, junto con este
-README, debajo del bloque gestionado de `~/.buzz/AGENTS.md`, que es lo que los agentes
-leen en cada turno. Añadir un agente es añadir un archivo y volver a sincronizar.
+Reglas comunes de los agentes de Buzz. Cada agente tiene su archivo en `jarviis/agents/`:
+frontmatter (`name`, `pubkey`, `rol`, `cuando`) y, en el cuerpo, **su prompt**. Añadir un
+agente es añadir un archivo y volver a sincronizar.
 
-Para llevar las instrucciones propias de un agente a su system prompt en Buzz Desktop
-(owner-reviewed, lo apruebas en la app):
+## Cómo llega al agente
+
+`npm run agents:sync` genera de esta carpeta la tabla "Quién hace qué", este README y una
+sección "Instrucciones por agente" con el cuerpo de cada uno, y lo escribe debajo del
+bloque gestionado de `~/.buzz/AGENTS.md`. Además asegura `~/.buzz/CLAUDE.md` con la línea
+`@AGENTS.md`: los agentes con harness Claude Code arrancan con cwd `~/.buzz` y cargan
+`CLAUDE.md`, no `AGENTS.md`; sin ese puente solo ven el nido si se les pide leerlo.
+
+Se carga **al arrancar la sesión** del agente (una por canal), no en cada turno. El circuito
+completo es:
 
 ```bash
-awk 'f; /^---$/ && ++n == 2 { f = 1 }' agents/honey.md \
-  | buzz agents draft-update --channel <uuid-del-canal> --agent-name Honey --system-prompt -
+vim agents/honey.md && npm run agents:sync   # y reiniciar el agente desde Buzz Desktop
 ```
 
-Comprobado el 2026-09-11 con Honey (prueba: una línea de firma en el prompt, que apareció
-en su siguiente respuesta):
+Comprobado el 2026-09-11 con Honey: una línea añadida solo en `honey.md` apareció en su
+respuesta tras sincronizar y reiniciarla, sin tocar Edit Agent. El campo "Agent
+instructions" de Edit Agent puede quedar con la identidad mínima ("You are Honey…"); lo
+que se quiera controlar desde git va en el archivo. Si chocan, la sección "Instrucciones
+por agente" manda.
 
-- `draft-update` solo prellena el formulario si lo envía **el dueño** de los agentes. Desde
-  otra identidad el relay lo acepta pero Desktop no lo muestra; entonces se pega a mano.
-- Un cambio de prompt exige **Save changes, reabrir Edit Agent para confirmar que
-  persistió, y reiniciar el agente**. El proceso vivo sigue con el prompt anterior.
-- Tras reiniciar la app, las menciones de los dos primeros minutos se pierden.
-- **Respond to** decide a quién contesta cada agente: con *Only me* ignora a las demás
-  identidades, incluida la terminal, sin dar ningún aviso.
+Lo demás aprendido ese día: un cambio en Edit Agent exige **Save changes, reabrir para
+confirmar que persistió, y reiniciar el agente**. `buzz agents draft-update` solo prellena
+el formulario si lo envía el dueño de los agentes; desde otra identidad el relay lo acepta
+pero Desktop no lo muestra. Tras reiniciar la app, las menciones de los dos primeros minutos
+se pierden. **Respond to** decide a quién contesta cada agente: con *Only me* ignora a las
+demás identidades, incluida la terminal, sin aviso.
 
 Última revisión: 2026-09-11.
 

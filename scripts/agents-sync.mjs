@@ -7,8 +7,14 @@
    node scripts/agents-sync.mjs --check   # sale 1 si el nido está desactualizado
 
    La sección es: título de agents/README.md, tabla "Quién hace qué" generada del
-   frontmatter de agents/<agente>.md (name, pubkey, rol, cuando), y el resto del README.
-   El cuerpo de cada agents/<agente>.md son sus instrucciones propias y no va al nido.
+   frontmatter de agents/<agente>.md (name, pubkey, rol, cuando), el resto del README y,
+   al final, "Instrucciones por agente" con el cuerpo de cada agents/<agente>.md bajo su
+   nombre. Los agentes leen el nido en cada turno, así que editar el cuerpo y sincronizar
+   cambia su comportamiento sin tocar Buzz Desktop.
+
+   Los agentes con harness Claude Code arrancan con cwd ~/.buzz y cargan CLAUDE.md, no
+   AGENTS.md, así que el script asegura además un ~/.buzz/CLAUDE.md que importa
+   @AGENTS.md. Cargan al arrancar la sesión: tras sincronizar hay que reiniciar el agente.
 
    Una sola dirección: el repo es la fuente, el nido es salida generada. No es un
    symlink porque Buzz regenera la parte de arriba del nido y lo haría a través del
@@ -23,6 +29,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MARKER = "<!-- END BUZZ MANAGED -->";
+export const BRIDGE = "@AGENTS.md";
 export const HEADER = "<!-- Generado desde jarviis/agents/ por `npm run agents:sync`. No editar aquí: los cambios se pierden en la próxima sincronización. -->";
 const FIELDS = ["name", "pubkey", "rol", "cuando"];
 
@@ -56,11 +63,21 @@ export function roster(agents) {
     ...agents.map((a) => `| ${a.name} | \`${short(a.pubkey)}\` | ${a.rol} | ${a.cuando} |`)].join("\n");
 }
 
-/* La sección completa: título y preámbulo del README, la tabla, el resto del README. */
+/* Una subsección por agente con su cuerpo; los agentes sin cuerpo no aparecen. */
+export function instructions(agents) {
+  const withBody = agents.filter((a) => a.body);
+  if (!withBody.length) return "";
+  return ["## Instrucciones por agente", "",
+    "Cada agente sigue solo la suya, desde el turno en que la lee y por encima de lo que diga su Edit Agent si chocan. Las demás son para saber qué esperar de los otros.", "",
+    ...withBody.flatMap((a) => [`### ${a.name}`, "", a.body, ""])].join("\n").trim();
+}
+
+/* La sección completa: título y preámbulo del README, la tabla, el resto del README,
+   las instrucciones por agente. */
 export function buildSection({ readme, agents }) {
   const cut = readme.indexOf("\n## ");
   const [pre, rest] = cut < 0 ? [readme, ""] : [readme.slice(0, cut), readme.slice(cut)];
-  return `${pre.trim()}\n\n${roster(agents)}\n${rest}`.trim();
+  return `${pre.trim()}\n\n${roster(agents)}\n${rest.trimEnd()}\n\n${instructions(agents)}`.trim();
 }
 
 /* Devuelve el contenido del nido con todo lo anterior al último MARKER intacto y
@@ -72,14 +89,29 @@ export function merge(nest, section) {
   return `${managed}\n\n${HEADER}\n\n${section.trim()}\n`;
 }
 
-/* Sincroniza `agentsDir` sobre `nestPath`. Devuelve { changed, nestPath }. */
+/* CLAUDE.md junto al nido con la línea `@AGENTS.md`. Devuelve el contenido que debe
+   tener: el actual si ya la lleva, el actual más la línea si no, o solo la línea. */
+export function bridge(current) {
+  if (current == null) return `${BRIDGE}\n`;
+  if (current.split("\n").some((l) => l.trim() === BRIDGE)) return current;
+  return `${current.trimEnd()}\n\n${BRIDGE}\n`;
+}
+
+/* Sincroniza `agentsDir` sobre `nestPath` y asegura el CLAUDE.md puente al lado.
+   Devuelve { changed, nestPath, bridgePath }. */
 export function sync({ agentsDir, nestPath, check = false }) {
   if (!existsSync(nestPath)) throw new Error(`no existe ${nestPath}; lo crea Buzz Desktop, no este script`);
   const nest = readFileSync(nestPath, "utf8");
   const next = merge(nest, buildSection(readAgentsDir(agentsDir)));
-  const changed = next !== nest;
-  if (changed && !check) writeFileSync(nestPath, next);
-  return { changed, nestPath };
+  const bridgePath = join(dirname(nestPath), "CLAUDE.md");
+  const currentBridge = existsSync(bridgePath) ? readFileSync(bridgePath, "utf8") : null;
+  const nextBridge = bridge(currentBridge);
+  const changed = next !== nest || nextBridge !== currentBridge;
+  if (!check) {
+    if (next !== nest) writeFileSync(nestPath, next);
+    if (nextBridge !== currentBridge) writeFileSync(bridgePath, nextBridge);
+  }
+  return { changed, nestPath, bridgePath };
 }
 
 function main(argv) {
