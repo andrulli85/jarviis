@@ -10,7 +10,8 @@ Para llevar las instrucciones propias de un agente a su system prompt en Buzz De
 (owner-reviewed, lo apruebas en la app):
 
 ```bash
-awk 'f; /^---$/ && ++n == 2 { f = 1 }' agents/honey.md | buzz agents draft-update --agent-name Honey --system-prompt -
+awk 'f; /^---$/ && ++n == 2 { f = 1 }' agents/honey.md \
+  | buzz agents draft-update --channel <uuid-del-canal> --agent-name Honey --system-prompt -
 ```
 
 Última revisión: 2026-09-11.
