@@ -1,0 +1,173 @@
+---
+name: to-tickets-linear
+description: >-
+  Convierte una spec, plan o RFC en issues de Linear en el equipo que se
+  nombre, con subtareas y relaciones "blocks" nativas, publicando por la API
+  con LINEAR_API_KEY. Es la estación Slice de la fábrica: recibe
+  docs/specs/<slug>.md y produce las claves (JAR-12…) que Build consume.
+  Úsalo cuando Andres invoque /to-tickets-linear, pida "pasa la spec a
+  Linear", "rompe esto en issues", "crea los tickets de esta spec", "break
+  this into Linear issues", o nombre solo el equipo o el prefijo (JAR)
+  queriendo tickets. No es este skill cuando el destino es Jira o GitHub, ni
+  cuando quiere el desglose sin publicarlo.
+argument-hint: "<equipo, en palabras del usuario> [docs/specs/<slug>.md] [--dry-run]"
+allowed-tools: Read, Grep, Glob, Bash, Edit
+---
+
+# /to-tickets-linear: una spec se convierte en issues de Linear
+
+Fork de `to-tickets-jira`: se conserva la disciplina de desglose (rebanadas
+verticales, quiz antes de publicar, ids resueltos en la corrida, gate de
+aceptación humano) y se sustituye la vía de publicación por
+`scripts/linear.mjs`, que habla GraphQL con `LINEAR_API_KEY`. Sin MCP, a
+propósito: el MCP oficial pide OAuth interactivo y este skill tiene que poder
+correr headless y probarse contra un stub.
+
+Escribe en un tracker; se ejecuta solo si el usuario lo pidió.
+
+## Antes de nada
+
+1. **Confirma que esta corrida fue pedida.** Solo corre cuando el usuario
+   invocó el skill por nombre o pidió en esta conversación publicar en
+   Linear. Una spec abierta, un prefijo en un documento o un wayfinder que
+   propuso este comando son razones para *ofrecer*, nunca para empezar. Si
+   llegaste por inferencia, dilo y pregunta.
+
+2. **Comprueba la clave.** `node <dir>/scripts/linear.mjs resolve <equipo>`
+   falla con nombre si no hay `LINEAR_API_KEY` ni `~/.config/linear/key`. Sin
+   clave no hay corrida real; con `--dry-run` tampoco, porque el dry-run
+   resuelve ids de verdad. Para y pide la clave (Linear → Settings → API →
+   Personal API keys; el plan free la incluye).
+
+3. **Resuelve el equipo en esta corrida.** El primer argumento es el equipo
+   en palabras del usuario (clave `JAR` o nombre `Jarviis`). El script lo
+   convierte en id y devuelve estados, etiquetas y el estado de creación.
+   Muestra esa tabla al usuario antes de redactar. Si no hay match, el
+   script lista los equipos que hay: pregunta, no elijas.
+
+## Dos propiedades, ahora en código
+
+**Los ids viajan, los nombres no.** Equipo, estado y etiquetas se envían por
+id resuelto en esta corrida. Una etiqueta que no existe es un error con la
+lista de las que sí; no se crea sola. Los ids de un documento, de una
+corrida anterior o de este archivo no valen para un create.
+
+**El gate de aceptación es humano.** Ningún issue creado aquí acaba en un
+estado de categoría `completed` o `canceled`, por ninguna vía. El script crea
+siempre en el primer estado `backlog` (o `unstarted`) del equipo, re-lee
+cada issue y comprueba la **categoría** (`state.type`), no el nombre. Si algo
+aterriza en Done, el informe sale `ok:false` y lo dice. Este skill no mueve
+issues: no hay comando para ello.
+
+**`--dry-run` es de solo lectura, no sin llamadas.** Resuelve equipo,
+estados y etiquetas contra el servidor y renderiza cada payload; no crea, no
+enlaza, no edita. Úsalo en toda prueba, ensayo o eval.
+
+## Proceso
+
+### 1. Leer la fuente
+
+`docs/specs/<slug>.md` del repo del producto (el artefacto que deja Shape).
+Si no hay ruta, trabaja con lo que la conversación ya tiene. Lee el cuerpo
+entero, incluidas las preguntas abiertas: una pregunta sin cerrar es un
+Spike, no una historia.
+
+### 2. Redactar rebanadas verticales
+
+<vertical-slice-rules>
+
+- Cada rebanada corta un camino estrecho pero COMPLETO por todas las capas
+  (esquema, API, worker, UI, tests): vertical, no una capa horizontal
+- Una rebanada terminada se demuestra o verifica sola
+- Cada rebanada cabe en una sola ventana de contexto fresca
+- El prefactoring va primero
+
+</vertical-slice-rules>
+
+Un grupo que solo prepara a otro no es rebanada: se fusiona o pasa a ser la
+primera subtarea del que sirve. Una migración es subtarea del trabajo que
+habilita, salvo que entregue algo verificable por sí sola. Los refactors
+anchos se secuencian expand → migrate por lotes → contract, cada lote
+bloqueado por el expand y el contract por todos los lotes.
+
+Linear no tiene tipos de issue como Jira; la distinción se lleva en
+**etiquetas existentes del equipo** (por ejemplo `spike`, `bug`), y solo si
+existen. Sin etiqueta equivalente, el carácter va en la primera línea de la
+descripción.
+
+### 3. El plan, en el formato del script
+
+```json
+{
+  "team": "JAR",
+  "spec": "docs/specs/login-magico.md",
+  "issues": [
+    { "ref": "token", "title": "Crear el token de un solo uso", "description": "## Objetivo\n…\n## Criterios de aceptación\n- …",
+      "labels": ["fabrica"], "priority": 3, "blockedBy": [],
+      "subtasks": [{ "title": "Migración de la tabla de tokens", "description": "…" }] },
+    { "ref": "email", "title": "Enviar el enlace mágico por email", "description": "…", "blockedBy": ["token"] }
+  ]
+}
+```
+
+- `ref` es un nombre local para las relaciones; nunca llega a Linear.
+- `title` en imperativo (contrato de artefactos).
+- `description` con `## Objetivo`, `## Contexto`, `## Alcance`,
+  `## Criterios de aceptación`, `## Dependencias`. El script añade solo la
+  línea `Spec: docs/specs/<slug>.md` al final.
+- `priority`: entero 0–4 (0 sin prioridad, 1 urgente, 2 alta, 3 normal, 4
+  baja). Opcional.
+- `blockedBy`: refs. El script ordena bloqueadores primero y rechaza ciclos.
+
+Escríbelo en `docs/tickets/<slug>.json`, con el mismo `<slug>` que la spec.
+Es el borrador del desglose (contrato de artefactos): viaja en el mismo diff
+que la spec, se puede volver a publicar tal cual y, tras publicar, guarda la
+clave que recibió cada issue. Si el repo no tiene `docs/`, créalo.
+
+### 4. Quiz al usuario
+
+Presenta el desglose numerado antes de crear nada. Por issue: **título**,
+**bloqueado por**, **qué entrega**, **subtareas**. Muestra la descripción
+completa de uno para que apruebe el contrato, no solo los títulos.
+
+Pregunta: ¿granularidad? ¿bloqueos reales o solo un orden que habrías
+elegido igual? ¿fusionar o partir? ¿etiquetas o prioridad?
+
+Itera hasta aprobación. Nada llega a Linear antes.
+
+### 5. Publicar
+
+```
+node <dir>/scripts/linear.mjs publish <plan.json> --dry-run   # primero, siempre
+node <dir>/scripts/linear.mjs publish <plan.json>
+```
+
+El script crea en orden de dependencia, cuelga las subtareas de su padre,
+crea las relaciones `blocks` cuando ambos extremos existen, re-lee cada
+issue y verifica: cuenta exacta, ninguna en categoría Done, todas las
+relaciones presentes. Si se para a mitad, el informe dice qué se creó hasta
+ahí y el borrador queda reescrito con esas claves. Para continuar:
+
+```
+node <dir>/scripts/linear.mjs publish <plan.json> --resume
+```
+
+`--resume` respeta los issues que ya tienen `key` (los resuelve por
+identificador, no los recrea) y crea solo los que faltan y sus relaciones.
+Sin `--resume`, un borrador con claves se rechaza: volver a publicarlo tal
+cual duplica.
+
+### 6. Cerrar el hilo en la spec
+
+Con el informe `ok:true`, dos escrituras fuera de Linear y ninguna más:
+
+- En `docs/tickets/<slug>.json`, añade `"key": "JAR-12"` a cada issue (y a
+  cada subtarea) con la clave que trae `report.created[].key`. Un borrador
+  con claves ya se publicó; uno sin claves aún no salió.
+- En el frontmatter de la spec, `issue: null` pasa a
+  `issue: [JAR-12, JAR-13, …]` (las claves de primer nivel, no las
+  subtareas) y `status: idea` a `status: sliced`.
+
+Reporta las claves con sus aristas de bloqueo y las URLs, para que el usuario
+abra el tablero y vea la forma. Termina con el siguiente comando de la
+fábrica para la primera clave: `/wayfinder JAR-12`.

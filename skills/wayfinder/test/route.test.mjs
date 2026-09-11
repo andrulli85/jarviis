@@ -14,6 +14,14 @@ test("una clave de Linear en el texto es un issue, con la clave en mayúsculas",
   assert.deepEqual(classify("ABC-3", { linearPrefix: "JAR" }), { kind: "idea" }, "con prefijo, solo ese prefijo");
 });
 
+test("una clave en mayúsculas sin prefijo configurado se enruta pero se pregunta", () => {
+  const r = buildRoute("Soportar UTF-8 en el parser", fakeWorld());
+  assert.equal(r.kind, "issue");
+  assert.ok(r.questions.some((q) => /UTF-8.*técnico/s.test(q)));
+  const r2 = buildRoute("JAR-12", { ...fakeWorld(), linearPrefix: "JAR" });
+  assert.ok(!r2.questions.some((q) => /técnico/.test(q)));
+});
+
 test("tokens técnicos con guion no son claves de issue", () => {
   assert.equal(classify("soporte utf-8 en el parser").kind, "idea");
   assert.equal(classify("migrar a gpt-5").kind, "idea");

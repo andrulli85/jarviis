@@ -21,7 +21,7 @@ primera estación y a la vez el mapa de todas las demás.
 |---|---|---|---|---|
 | 0 | Intake (wayfinder) | idea en texto libre → ruta (estaciones a recorrer, preguntas abiertas) | `wayfinder` | existe (`skills/wayfinder`) |
 | 1 | Shape | idea → spec interrogada | `buzz-kickoff` / `grilling` | existe |
-| 2 | Slice | spec → issues en Linear con dependencias | `to-tickets-linear` | por construir (fork de `to-tickets-jira`) |
+| 2 | Slice | spec → issues en Linear con dependencias | `to-tickets-linear` | en construcción (`skills/to-tickets-linear`, fork de `to-tickets-jira`) |
 | 3 | Build | issue → workspace Conductor → PR | `tdd`, `git-conventions` | existe (manual: crear workspace) |
 | 4 | Review | PR → hallazgos verificados | `adversarial-review`, `code-review` | existe |
 | 5 | Ship / Learn | PR mergeado → learning en el vault | `learnings`, `keeper` | existe |
@@ -99,14 +99,10 @@ asume sin preguntar.
 | PR | Primera línea del cuerpo referencia la clave. Linear cierra el issue al merge. |
 | Learning | Frontmatter con `date:` y `issue: JAR-12`. |
 
-## Orden de construcción
+## Documentos
 
-1. Fijar el contrato de artefactos (sección anterior).
-2. ~~`providers/`~~ hecho: resolvedor único (`claude` | `codex` | `openrouter`),
-   extraído de `tooled-review.mjs` (binarios, familia) y del
-   `adversarial-review.mjs` retirado (HTTP, contrato JSON, stub). `npm test`.
-3. ~~`wayfinder`~~ hecho: `skills/wayfinder/` (SKILL.md, `stations.json`,
-   `scripts/route.mjs`, evals). 17 tests unitarios y 6 casos headless en verde
-   el 2026-09-11.
-4. `to-tickets-linear`: fork de `to-tickets-jira` sobre el MCP oficial de Linear.
-5. Automatizar la creación del workspace Conductor desde un issue.
+| Carpeta | Qué guarda |
+|---|---|
+| `docs/plans/` | Plan de construcción de la fábrica y su estado por fase: [`fabrica.md`](docs/plans/fabrica.md) |
+| `docs/specs/` | Una spec por trabajo (`<slug>.md`), salida de Shape y entrada de Slice |
+| `docs/tickets/` | Borrador de issues por spec (`<slug>.json`), lo escribe `to-tickets-linear` y guarda las claves tras publicar |

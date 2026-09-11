@@ -142,6 +142,13 @@ export function buildRoute(input, world = {}) {
     }
   } else slug = slugify(key || `pr-${c.pr}`);
 
+  /* Sin prefijo configurado, un token en mayúsculas con guion y número es
+     tan clave de issue como estándar técnico (UTF-8, SHA-256). Sin prefijo
+     se toma como clave, que es lo que Andres escribe cuando pega una, y se
+     pregunta; con prefijo no hay duda. */
+  if (c.kind === "issue" && !w.linearPrefix) {
+    questions.push(`he leído ${key} como clave de issue; si es un término técnico y no una clave, dímelo. Con JARVIIS_LINEAR_PREFIX no hay ambigüedad`);
+  }
   if (!existsSync(join(w.cwd, ".git"))) questions.push(`${w.cwd} no es un repositorio git: ¿en qué repo vive el producto?`);
   if (!w.linearPrefix && (c.kind === "idea" || c.kind === "spec")) questions.push("¿qué prefijo de proyecto Linear usa este producto? (JARVIIS_LINEAR_PREFIX)");
 
