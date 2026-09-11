@@ -1,0 +1,73 @@
+{
+  "skill_name": "wayfinder",
+  "evals": [
+    {
+      "id": 1,
+      "name": "idea-to-shape",
+      "prompt": "/wayfinder login con enlace mágico por email para el panel de admin",
+      "expected_output": "Route table starting at Shape, spec skeleton created at docs/specs/login-con-enlace-magico-por.md, final line is the /buzz-kickoff command. Nothing else written.",
+      "assertions": [
+        { "name": "ran-route-script", "check": "a Bash tool call ran scripts/route.mjs with the idea as argument" },
+        { "name": "table-shown", "check": "the reply contains the station table with rows 1 to 5 and a status per row" },
+        { "name": "spec-skeleton", "check": "test -f docs/specs/login-con-enlace-magico-por.md; frontmatter has status: idea and issue: null; body contains the user's text literally" },
+        { "name": "only-one-file", "check": "git status --porcelain shows exactly one new path, the spec" },
+        { "name": "ends-with-command", "check": "the reply ends with a copyable /buzz-kickoff docs/specs/login-con-enlace-magico-por.md" },
+        { "name": "did-not-invoke-next", "check": "no Skill tool call to buzz-kickoff or grilling appears in the transcript" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "issue-to-build-no-writes",
+      "prompt": "/wayfinder JAR-12",
+      "expected_output": "Route from Build; ends with /build-kickoff JAR-12; no files written.",
+      "assertions": [
+        { "name": "entry-build", "check": "the table starts at station 3 Build and does not list Shape or Slice" },
+        { "name": "no-writes", "check": "git status --porcelain is empty; no Write or Edit tool call in the transcript" },
+        { "name": "ends-with-command", "check": "the reply ends with /build-kickoff JAR-12" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "order-phrased-issue-is-still-a-route",
+      "prompt": "/wayfinder implementa ya JAR-12, el login mágico, y súbelo",
+      "expected_output": "Behavioral negative: the input is an order, the output is still only the route. No implementation, no branch, no commit, no push.",
+      "assertions": [
+        { "name": "no-implementation", "check": "no Write/Edit tool calls; no git checkout, commit or push commands in the transcript" },
+        { "name": "still-a-route", "check": "the reply contains the station table starting at Build and ends with /build-kickoff JAR-12" },
+        { "name": "says-why", "check": "the reply states in one line that the wayfinder routes and Build implements" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "existing-spec-enters-slice",
+      "prompt": "SANDBOX: before anything, the file docs/specs/login.md already exists in the current directory. /wayfinder docs/specs/login.md",
+      "expected_output": "Route from Slice; to-tickets-linear reported as por construir if absent; spec file untouched.",
+      "assertions": [
+        { "name": "entry-slice", "check": "the table starts at station 2 Slice" },
+        { "name": "spec-untouched", "check": "git diff --stat docs/specs/login.md is empty; no Write to that path" },
+        { "name": "reports-missing-skill", "check": "if ~/.claude/skills/to-tickets-linear does not exist, the reply says Slice is por construir and describes the output to produce by hand" }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "pr-enters-review-with-provider-state",
+      "prompt": "/wayfinder https://github.com/andrulli85/jarviis/pull/4",
+      "expected_output": "Route from Review; reports the opposite-family provider state as the script printed it; no review performed.",
+      "assertions": [
+        { "name": "entry-review", "check": "the table starts at station 4 Review" },
+        { "name": "provider-line", "check": "the reply states which channel Review needs (codex when the author is claude) and whether it is available" },
+        { "name": "no-review-done", "check": "no Skill call to adversarial-review or code-review; no gh pr view/diff commands; no findings listed" }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "empty-input-asks-once",
+      "prompt": "/wayfinder",
+      "expected_output": "One question asking for the input; no route, no files.",
+      "assertions": [
+        { "name": "one-question", "check": "the reply asks exactly one question (idea, issue key, PR or spec)" },
+        { "name": "no-writes", "check": "git status --porcelain is empty" }
+      ]
+    }
+  ]
+}

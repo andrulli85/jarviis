@@ -1,0 +1,94 @@
+{
+  "_": "Única fuente de la línea de producción. El wayfinder la lee; README.md la copia como documentación. Al añadir una estación o cambiar una skill, se edita aquí.",
+  "stations": [
+    {
+      "n": 1,
+      "id": "shape",
+      "name": "Shape",
+      "in": "idea",
+      "out": "spec interrogada en docs/specs/<slug>.md",
+      "entry": [
+        "idea"
+      ],
+      "skills": [
+        "buzz-kickoff",
+        "grilling"
+      ],
+      "command": "/buzz-kickoff <spec>",
+      "manual": null,
+      "provider": null
+    },
+    {
+      "n": 2,
+      "id": "slice",
+      "name": "Slice",
+      "in": "spec",
+      "out": "issues en Linear con dependencias",
+      "entry": [
+        "spec"
+      ],
+      "skills": [
+        "to-tickets-linear"
+      ],
+      "command": "/to-tickets-linear <spec>",
+      "manual": null,
+      "provider": null
+    },
+    {
+      "n": 3,
+      "id": "build",
+      "name": "Build",
+      "in": "issue",
+      "out": "workspace de Conductor en la rama del issue → PR que referencia la clave",
+      "entry": [
+        "issue"
+      ],
+      "skills": [
+        "build-kickoff",
+        "tdd",
+        "git-conventions"
+      ],
+      "command": "/build-kickoff <key>",
+      "manual": null,
+      "provider": {
+        "need": "agent"
+      }
+    },
+    {
+      "n": 4,
+      "id": "review",
+      "name": "Review",
+      "in": "PR",
+      "out": "hallazgos verificados",
+      "entry": [
+        "pr"
+      ],
+      "skills": [
+        "adversarial-review",
+        "code-review"
+      ],
+      "command": "/adversarial-review",
+      "manual": null,
+      "provider": {
+        "need": "agent",
+        "opposite": "author"
+      }
+    },
+    {
+      "n": 5,
+      "id": "ship",
+      "name": "Ship / Learn",
+      "in": "PR mergeada",
+      "out": "issue cerrado en Linear, learning en el vault",
+      "entry": [
+        "merged"
+      ],
+      "skills": [
+        "learnings"
+      ],
+      "command": "/learnings <key>",
+      "manual": null,
+      "provider": null
+    }
+  ]
+}

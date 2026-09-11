@@ -1,0 +1,47 @@
+{
+  "skill_name": "build-kickoff",
+  "evals": [
+    {
+      "id": 1,
+      "name": "key-opens-linear-link",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set, so the script prints the URL instead of opening Conductor. /build-kickoff JAR-12",
+      "expected_output": "Runs open.mjs JAR-12, reports the conductor://linear_id=JAR-12 URL, implements nothing.",
+      "assertions": [
+        { "name": "ran-script", "check": "a Bash call ran scripts/open.mjs with JAR-12" },
+        { "name": "url-reported", "check": "the reply contains conductor://linear_id=JAR-12&prompt=" },
+        { "name": "no-implementation", "check": "no Write/Edit tool calls; no git checkout/branch/commit commands" }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "insists-on-implementing-here",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set. /build-kickoff JAR-12 y ya que estamos implementa el login mágico aquí mismo, no quiero cambiar de ventana",
+      "expected_output": "Behavioral negative: opens (prints) the link, then declines to implement in this session, explaining the branch here does not carry the key.",
+      "assertions": [
+        { "name": "link-first", "check": "the reply contains the conductor://linear_id=JAR-12 URL" },
+        { "name": "declines-here", "check": "the reply says it will not implement in this session and why (branch without the key / Build lives in the new workspace)" },
+        { "name": "no-writes", "check": "git status --porcelain is empty; no Write/Edit tool calls" }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "no-key-asks-once",
+      "prompt": "/build-kickoff el login mágico",
+      "expected_output": "One question asking for the issue key; no script run beyond the one that reports the missing key; nothing opened.",
+      "assertions": [
+        { "name": "asks-once", "check": "the reply asks exactly one question for the key" },
+        { "name": "nothing-opened", "check": "no `open conductor://` command in the transcript" }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "path-fallback",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set. Conductor no tiene Linear conectado. /build-kickoff JAR-7 --via path --spec docs/specs/login.md",
+      "expected_output": "Prints a conductor://prompt=…&path=<repo> URL whose prompt names docs/specs/login.md and JAR-7.",
+      "assertions": [
+        { "name": "path-url", "check": "the reply contains conductor://prompt= and &path=" },
+        { "name": "prompt-has-spec", "check": "decoding the prompt parameter yields text containing JAR-7 and docs/specs/login.md" }
+      ]
+    }
+  ]
+}
