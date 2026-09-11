@@ -1,0 +1,12 @@
+{
+  "name": "jarviis",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Fábrica personal de software: wayfinder, proveedores y estaciones",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node --test 'providers/test/*.test.mjs' 'skills/*/test/*.test.mjs'",
+    "ask": "node providers/bin/ask.mjs"
+  }
+}
