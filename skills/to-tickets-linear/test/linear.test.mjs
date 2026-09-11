@@ -112,6 +112,15 @@ test("publish: un issue que aterriza en categoría Done se reporta como violaci�
   });
 });
 
+test("publish: duplicate también es categoría de cierre", async () => {
+  const states = [{ id: "s1", name: "Backlog", type: "backlog", position: 0 }, { id: "sd", name: "Duplicate", type: "duplicate", position: 9 }];
+  await withStub({ states, landIn: "sd" }, async ({ env }) => {
+    const r = await publish(plan(), { env });
+    assert.equal(r.ok, false);
+    assert.equal(r.verification.doneCategory.length, 4);
+  });
+});
+
 test("publish: etiqueta inexistente falla antes de crear nada", async () => {
   await withStub({}, async ({ env, stub }) => {
     const p = plan(); p.issues[0].labels = ["no-existe"];

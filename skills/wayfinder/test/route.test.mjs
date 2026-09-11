@@ -84,7 +84,7 @@ function fakeWorld({ personal = [], plugin = [], project = [], factory = [], spe
   const factoryDir = join(root, "factory"); mkdirSync(factoryDir);
   for (const s of factory) { mkdirSync(join(factoryDir, s)); writeFileSync(join(factoryDir, s, "SKILL.md"), "x"); }
   for (const s of specs) { mkdirSync(join(cwd, "docs", "specs"), { recursive: true }); writeFileSync(join(cwd, "docs", "specs", s), "x"); }
-  return { skillsDir, pluginsDir, cwd, factoryDir, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
+  return { skillsDir, pluginsDir, cwd, factoryDir, linearPrefix: null, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
 }
 
 test("una skill del proyecto (.claude/skills) existe; una de la fábrica sin enlazar se distingue y da el ln", () => {

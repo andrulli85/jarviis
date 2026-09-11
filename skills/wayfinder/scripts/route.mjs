@@ -136,7 +136,9 @@ export function buildRoute(input, world = {}) {
     pluginsDir: world.pluginsDir || join(homedir(), ".claude", "plugins"),
     providers: world.providers || providersStatus(),
     factoryDir: world.factoryDir || FACTORY_SKILLS,
-    linearPrefix: world.linearPrefix ?? process.env.JARVIIS_LINEAR_PREFIX ?? null,
+    /* `undefined` = no dicho, mira el entorno; `null` = dicho que no hay.
+       Los tests pasan null para no heredar el JARVIIS_LINEAR_PREFIX real. */
+    linearPrefix: world.linearPrefix !== undefined ? world.linearPrefix : (process.env.JARVIIS_LINEAR_PREFIX || null),
   };
   const text = String(input || "").trim();
   const c = classify(text, { linearPrefix: w.linearPrefix });

@@ -16,7 +16,8 @@
       Una etiqueta que no existe es un error con la lista de las que sí, no
       una etiqueta nueva creada por accidente.
    2. EL GATE DE ACEPTACIÓN ES HUMANO. Ningún issue creado aquí acaba en un
-      estado de categoría completed o canceled. El create lleva siempre el id
+      estado de categoría completed, canceled o duplicate (las tres cierran;
+      visto en el workspace real el 2026-09-11). El create lleva siempre el id
       del primer estado backlog (o unstarted) del equipo, y la re-lectura
       comprueba la CATEGORÍA (`state.type`), no el nombre, porque el nombre
       lo edita un admin y la categoría no.
@@ -29,7 +30,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 
 export const URL_DEFAULT = "https://api.linear.app/graphql";
-const DONE_TYPES = new Set(["completed", "canceled"]);
+const DONE_TYPES = new Set(["completed", "canceled", "duplicate"]);
 
 /* ------------------------------------------------------------ transport --- */
 
