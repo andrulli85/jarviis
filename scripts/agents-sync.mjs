@@ -1,6 +1,8 @@
 #!/usr/bin/env node
-/* agents-sync.mjs: copia AGENTS.md del repo debajo del bloque gestionado de
+/* agents-sync.mjs: copia la sección "Colmena de Buzz" de AGENTS.md (lo que hay entre
+   <!-- colmena:start --> y <!-- colmena:end -->) debajo del bloque gestionado de
    ~/.buzz/AGENTS.md, que es el archivo que los agentes de Buzz leen en cada turno.
+   El resto de AGENTS.md son instrucciones para trabajar en el repo y en el chat sobran.
 
    npm run agents:sync
    node scripts/agents-sync.mjs --check   # sale 1 si el nido está desactualizado
@@ -9,8 +11,8 @@
    symlink porque Buzz regenera la parte de arriba del nido y lo haría a través del
    enlace, ensuciando el repo. Idempotente: correrlo dos veces deja el mismo archivo.
 
-   Sale 0 si el nido quedó (o ya estaba) al día; 1 si falta el nido o su marcador,
-   o con --check si difiere; 2 por mal uso. */
+   Sale 0 si el nido quedó (o ya estaba) al día; 1 si falta el nido, su marcador o
+   la sección en AGENTS.md, o con --check si difiere; 2 por mal uso. */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
@@ -18,15 +20,24 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const MARKER = "<!-- END BUZZ MANAGED -->";
-export const HEADER = "<!-- Generado desde jarviis/AGENTS.md por `npm run agents:sync`. No editar aquí: los cambios se pierden en la próxima sincronización. -->";
+export const HEADER = "<!-- Generado desde la sección «Colmena de Buzz» de jarviis/AGENTS.md por `npm run agents:sync`. No editar aquí: los cambios se pierden en la próxima sincronización. -->";
+export const SECTION = ["<!-- colmena:start -->", "<!-- colmena:end -->"];
+
+/* Devuelve el texto entre los marcadores de sección, sin ellos. Lanza si falta alguno. */
+export function extract(source) {
+  const [open, close] = SECTION;
+  const a = source.indexOf(open), b = source.indexOf(close, a + open.length);
+  if (a < 0 || b < 0) throw new Error(`AGENTS.md no tiene la sección entre ${open} y ${close}`);
+  return source.slice(a + open.length, b).trim();
+}
 
 /* Devuelve el contenido del nido con todo lo anterior al último MARKER intacto y
-   `source` debajo, precedido por HEADER. Lanza si el nido no tiene el marcador. */
-export function merge(nest, source) {
+   `section` debajo, precedida por HEADER. Lanza si el nido no tiene el marcador. */
+export function merge(nest, section) {
   const at = nest.lastIndexOf(MARKER);
   if (at < 0) throw new Error(`el nido no contiene el marcador ${MARKER}`);
   const managed = nest.slice(0, at + MARKER.length);
-  return `${managed}\n\n${HEADER}\n\n${source.trimEnd()}\n`;
+  return `${managed}\n\n${HEADER}\n\n${section.trim()}\n`;
 }
 
 /* Sincroniza `sourcePath` sobre `nestPath`. Devuelve { changed, nestPath }. */
@@ -34,7 +45,7 @@ export function sync({ sourcePath, nestPath, check = false }) {
   if (!existsSync(nestPath)) throw new Error(`no existe ${nestPath}; lo crea Buzz Desktop, no este script`);
   const source = readFileSync(sourcePath, "utf8");
   const nest = readFileSync(nestPath, "utf8");
-  const next = merge(nest, source);
+  const next = merge(nest, extract(source));
   const changed = next !== nest;
   if (changed && !check) writeFileSync(nestPath, next);
   return { changed, nestPath };

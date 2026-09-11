@@ -106,4 +106,4 @@ asume sin preguntar.
 | `docs/plans/` | Plan de construcción de la fábrica y su estado por fase: [`fabrica.md`](docs/plans/fabrica.md) |
 | `docs/specs/` | Una spec por trabajo (`<slug>.md`), salida de Shape y entrada de Slice |
 | `docs/tickets/` | Borrador de issues por spec (`<slug>.json`), lo escribe `to-tickets-linear` y guarda las claves tras publicar |
-| `AGENTS.md` | Reglas compartidas de los agentes de Buzz (roles, cómo conversan, lo ya decidido). Fuente de verdad; `npm run agents:sync` la copia debajo del bloque gestionado de `~/.buzz/AGENTS.md`, que es lo que leen en cada turno. `--check` sale 1 si el nido está desactualizado |
+| `AGENTS.md` | Instrucciones para agentes de código que trabajan en el repo (estructura, comandos, convenciones). Su sección «Colmena de Buzz» (roles, cómo conversan, lo ya decidido) es la fuente de verdad de los agentes de Buzz: `npm run agents:sync` la copia debajo del bloque gestionado de `~/.buzz/AGENTS.md`, que es lo que leen en cada turno. `--check` sale 1 si el nido está desactualizado |

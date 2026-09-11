@@ -3,16 +3,24 @@ import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { merge, sync, MARKER, HEADER } from "../agents-sync.mjs";
+import { extract, merge, sync, MARKER, HEADER, SECTION } from "../agents-sync.mjs";
 
 const MANAGED = `# Buzz Nest\n\nTexto que Buzz regenera.\n\n## Workspace\n- Relay: wss://x\n${MARKER}`;
 
-function fixture({ nest, source = "## Equipo\n\nregla 1\n" }) {
+const [OPEN, CLOSE] = SECTION;
+const SOURCE = `# AGENTS.md\n\n## Comandos\n\nnpm test\n\n${OPEN}\n## Equipo\n\nregla 1\n${CLOSE}\n`;
+
+function fixture({ nest, source = SOURCE }) {
   const root = mkdtempSync(join(tmpdir(), "agents-sync-"));
   const sourcePath = join(root, "AGENTS.md"); writeFileSync(sourcePath, source);
   const nestPath = join(root, "nest.md"); if (nest !== undefined) writeFileSync(nestPath, nest);
   return { sourcePath, nestPath };
 }
+
+test("extract devuelve solo lo que hay entre los marcadores de sección", () => {
+  assert.equal(extract(SOURCE), "## Equipo\n\nregla 1");
+  assert.throws(() => extract("# AGENTS.md\n\n## Comandos\n"), /sección/);
+});
 
 test("conserva lo gestionado hasta el marcador y pone la fuente debajo con cabecera", () => {
   const out = merge(`${MANAGED}\n\n## Equipo viejo\n\nregla vieja\n`, "## Equipo\n\nregla 1\n");
@@ -37,6 +45,7 @@ test("sync escribe el nido y es idempotente", () => {
   assert.equal(sync(f).changed, true);
   const first = readFileSync(f.nestPath, "utf8");
   assert.match(first, /regla 1/);
+  assert.doesNotMatch(first, /npm test/, "las instrucciones del repo no van al nido");
   assert.equal(sync(f).changed, false);
   assert.equal(readFileSync(f.nestPath, "utf8"), first);
 });
