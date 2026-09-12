@@ -155,6 +155,16 @@ elige, la corrida no sigue.
 
 Itera hasta aprobación. Nada llega a Linear antes.
 
+**El quiz corre en Buzz como grill cruzado** (decidido el 2026-09-12): un canal
+`slice-<slug corto>` con Codex Grill (GPT) y Andres; Claude Terminal publica el
+desglose con las preguntas y sus recomendaciones como brief
+(`PLANS/<slug>/brief.md`, con las rutas del borrador y la spec bajo
+`REPOS/personal/...` para que las abra), lanza `/grill-me dec` con tope de 2
+rondas, defiende cada recomendación y anota lo que cambie; Andres cierra con
+`✅` y el veredicto aterriza en `docs/grill/<slug>/` junto al borrador. El quiz
+en terminal es el respaldo cuando Buzz o el agente no están disponibles. La
+regla no cambia: nada llega a Linear antes del `✅`.
+
 ### 5. Publicar
 
 ```

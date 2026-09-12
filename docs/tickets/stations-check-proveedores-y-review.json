@@ -1,0 +1,43 @@
+{
+  "team": "JAR",
+  "spec": "docs/specs/stations-check-proveedores-y-review.md",
+  "issues": [
+    {
+      "ref": "health",
+      "title": "Añadir providers.health() y --probe para que stations --check sea verde solo con evidencia reciente de respuesta",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 2,
+      "blockedBy": [],
+      "description": "## Objetivo\nQue `npm run stations -- --check` salga 0 solo cuando cada canal (claude, codex, openrouter) tiene evidencia reciente de haber respondido, sin sondear por defecto, y que `--probe` obtenga esa evidencia con un `pong` real por canal.\n\n## Contexto\nDecisiones D1, D4, D6–D10, D12, D13 en `docs/specs/stations-check-proveedores-y-review.md` (grill en terminal + grill cruzado Codex Grill ↔ Claude Terminal, `docs/grill/stations-check-gpt/verdict.md`). Hoy `providers.status()` devuelve solo la ruta del binario y `failures()` marca fallo solo cuando falta: \"instalado\" se vendía como \"responde\".\n\n## Alcance\n- `providers/index.mjs`: `health(env, { probe, evidenceDir, stateFile, exec, ask, now })` → por canal `{ bin, status: ok|quota|down|unprobed, until?, latency?, why?, at? }` más `ignored`. Detectores inmediatos (sin binario, `claude auth status` ≠ 0, sin clave OpenRouter) → `down`; cuando pasan no deciden. Evidencia: JSON de `~/.claude/adversarial-reviews/` con `agent` = canal (cualquier repo) + registro del canal en `~/.local/state/jarviis/health.json`; instante = timestamp del nombre de archivo, si no `mtime`; el más reciente dentro de 7 días manda; empate → fallo; corruptos/sin agent/fecha futura → `ignored`. `ok:true`/`status:ok` → `ok`; \"try again at <fecha>\" futura (zona local) → `quota` con `until`; otro fallo → `down` con `why`; nada → `unprobed`.\n- `probe: true`: `ask()` \"pong\" a los tres en paralelo, timeout 30 s por canal; resultado a `stateFile` (escritura atómica tmp+rename; ausente/corrupto = sin evidencia, nunca error).\n- `ask()` escribe la evidencia de salud del canal al terminar cualquier uso real (D12).\n- `stations.mjs`: `collectStations` usa `health()`; fila `proveedor: codex ok (fecha, 1.8 s)` / `sin cuota hasta …` / `sin sondear` / `down: <why>`; pie por canal (+ `ignorados: n`); `failures()` cuenta `quota`, `down` y `unprobed`; flag `--probe`; `--json` con `providers`.\n- Tests sin red: fixtures de evidencia (ok reciente, cuota futura, cuota pasada, fallo sin fecha, corrupto, sin agent, fecha futura, otro repo, empate, nombre sin timestamp), `stateFile` ausente/corrupto/válido, `exec` falso, `ask` inyectado (responde/falla/timeout), `now` inyectado, `failures()` por estado, render.\n\n## Criterios de aceptación\n- `npm test` en verde.\n- En esta máquina: `npm run stations -- --check; echo $?` → 1 con \"sin evidencia reciente\" antes de sondear; `npm run stations -- --probe` imprime los tres resultados y deja `health.json`; el `--check` siguiente sale 0 (o 1 con `codex sin cuota hasta …`).\n- `--json` trae `providers.codex.status` y `providers.ignored`.\n- `renderStations` sigue sin contener \"Siguiente paso\".\n\n## Dependencias\nNinguna.",
+      "subtasks": []
+    },
+    {
+      "ref": "debt",
+      "title": "Mostrar en stations la deuda de review adversarial con reviewDebt()",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "health"
+      ],
+      "description": "## Objetivo\nQue `npm run stations` muestre el rango de commits de este repo sin review adversarial y el comando para saldarlo, sin que eso cambie el exit de `--check`.\n\n## Contexto\nDecisiones D2, D3, D5, D11 en `docs/specs/stations-check-proveedores-y-review.md`. Nueve PRs de `jarviis` entraron sin review por cuota de Codex y ningún comando lo decía. `/code-review` no deja evidencia y por eso no cuenta.\n\n## Alcance\n- `stations.mjs`: `reviewDebt({ cwd, evidenceDir, git })` → `{ lastReviewed: { sha, at } | null, pending: [sha…], command, note }`. Elegible: evidencia `ok:true` con `verdict` cuyo `to` es ancestro de `HEAD`; entre varias, la de `to` más reciente en la historia (a igual posición, instante más reciente); un `to` que dejó de ser ancestro (rebase/squash) no cuenta. `pending` = `git log <to>..HEAD --format=%h`; `command` = `/adversarial-review <to7>..HEAD`.\n- Sección \"Review pendiente\" bajo \"Arreglos\": `N commits sin review adversarial desde <sha7> (<fecha>): <command>` | `al día (último review <sha7>, <fecha>)` | `sin evidencia de review en este repo`, más la nota sobre `/code-review`. `--json` con `review`. `failures()` no cambia.\n- Tests con repo git temporal: cuatro commits y evidencia con `to` en el segundo → 2 pendientes y comando; dos evidencias ancestro → gana la más reciente en la historia; `to` no ancestro → no cuenta; sin evidencia; `ok:false` no cuenta.\n\n## Criterios de aceptación\n- `npm test` en verde.\n- En `jarviis` hoy, \"Review pendiente\" muestra los commits desde la última evidencia `ok:true` real (o \"sin evidencia\") con el comando; `--check` mantiene su exit.\n\n## Dependencias\nBloqueado por `health()` (comparte lectura de evidencia y render).",
+      "subtasks": []
+    },
+    {
+      "ref": "docs",
+      "title": "Documentar --probe, los estados de salud y Review pendiente en el README",
+      "labels": [
+        "Improvement"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "debt"
+      ],
+      "description": "## Objetivo\nQue quien lea el README sepa que `--check` necesita evidencia reciente (la primera vez sale rojo: correr `--probe`), qué significa cada estado de salud, que `--probe` gasta una llamada por canal, y que \"Review pendiente\" es informativa y no cuenta `/code-review`.\n\n## Contexto\nRebanada 3 de `docs/specs/stations-check-proveedores-y-review.md`.\n\n## Alcance\n- README, sección de `npm run stations`: `--probe`, estados `ok · sin cuota hasta · down · sin sondear`, ventana de 7 días, \"Review pendiente\".\n- `docs/plans/fabrica.md`: fila con la fase y el commit al cerrar.\n\n## Criterios de aceptación\n- El README menciona `--probe`, `sin sondear` y \"Review pendiente\".\n- `npm test` en verde.\n\n## Dependencias\nBloqueado por `reviewDebt()`.",
+      "subtasks": []
+    }
+  ]
+}
