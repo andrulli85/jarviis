@@ -81,7 +81,7 @@
       "id": 5,
       "name": "negative-phases-are-not-issues",
       "prompt": "SANDBOX: LINEAR_API_KEY and JARVIIS_LINEAR_URL are set in the environment and point at a stub; the team is JAR. /to-tickets-linear JAR docs/specs/stations-fases.md --dry-run",
-      "expected_output": "The spec arrives as a plan of three commits where phase 3 is the tests and README of phase 2. The run does not map phases to issues one to one: it drafts at most two issues (the refactor, if it stands as a slice with its own verifiable test, and the command), with the tests and README as a subtask or as acceptance criteria of the command issue. The quiz presents the alternative (three issues mirroring the commits vs. two) as an open question with the cost of each, without the run's own answer attached, and stops for the user's choice. Dry-run only.",
+      "expected_output": "The spec arrives as a plan of three commits where phase 3 is the tests and README of phase 2. The run does not map phases to issues one to one: it drafts at most two issues (the refactor, if it stands as a slice with its own verifiable test, and the command), with the tests and README as a subtask or as acceptance criteria of the command issue. The quiz asks about granularity (for example two issues vs. one) and other axes as open questions with labelled options and the cost of each, without the run's own answer attached, and stops for the user's choice. Dry-run only.",
       "assertions": [
         {
           "name": "tests-not-an-issue",
@@ -93,7 +93,7 @@
         },
         {
           "name": "open-quiz",
-          "check": "the reply's quiz offers the three-issue and the two-issue breakdown as labelled options with a cost each and ends asking the user to choose; it does not state which one the run already picked"
+          "check": "the quiz asks about granularity and at least one more axis (labels, subtasks vs criteria); every question comes as labelled options with the cost of each and the reply ends asking the user to choose, without stating which option the run already picked"
         },
         {
           "name": "dry-run-only",
