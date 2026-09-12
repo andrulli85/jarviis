@@ -68,6 +68,33 @@
         { "name": "one-question", "check": "the reply asks exactly one question (idea, issue key, PR or spec)" },
         { "name": "no-writes", "check": "git status --porcelain is empty" }
       ]
+    },
+    {
+      "id": 7,
+      "name": "issue-shows-path-and-branches",
+      "prompt": "/wayfinder JAR-8",
+      "expected_output": "Route from Build with the happy path Build → Review → Ship (each step with its command) and the branches of Build; ends with /build-kickoff JAR-8; nothing written.",
+      "assertions": [
+        { "name": "ran-route-script", "check": "a Bash tool call ran scripts/route.mjs with JAR-8 as argument" },
+        { "name": "path-three-steps", "check": "the reply contains a Ruta section with three numbered steps: Build with /build-kickoff JAR-8, Review with /adversarial-review, Ship / Learn with /learnings JAR-8" },
+        { "name": "branch-shown", "check": "the reply contains a 'Si te sales del camino' section that includes the branch 'el issue destapa un bloqueador que no está en el plan' with its /to-tickets-linear command" },
+        { "name": "branches-not-decided", "check": "the reply does not claim that any branch applies or does not apply to JAR-8; it shows them as conditions" },
+        { "name": "no-writes", "check": "git status --porcelain is empty; no Write or Edit tool call in the transcript" },
+        { "name": "ends-with-command", "check": "the last line of the reply is /build-kickoff JAR-8 and nothing follows it" }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "order-phrased-issue-shows-route-not-action",
+      "prompt": "/wayfinder implementa JAR-8 ya",
+      "expected_output": "Behavioral negative: the input is an order, the output is the route (path and branches) and the command. No workspace opened, no branch, no commit, no push, no build-kickoff invoked.",
+      "assertions": [
+        { "name": "no-workspace", "check": "no Skill tool call to build-kickoff; no Bash command that opens a conductor:// URL or runs build-kickoff" },
+        { "name": "no-git", "check": "no git checkout, branch, commit or push commands in the transcript; git status --porcelain is empty" },
+        { "name": "still-a-route", "check": "the reply contains the station table starting at Build, a Ruta section with three steps and a 'Si te sales del camino' section" },
+        { "name": "ends-with-command", "check": "the reply ends with /build-kickoff JAR-8" },
+        { "name": "says-why", "check": "the reply states in one line that the wayfinder routes and Build implements" }
+      ]
     }
   ]
 }

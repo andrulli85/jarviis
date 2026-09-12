@@ -21,9 +21,9 @@ Una entrada, una ruta. La fábrica tiene cinco estaciones y cada una recibe un
 artefacto y produce el siguiente. Este skill decide **por cuál se entra** y
 **qué hay disponible** para recorrerla; las estaciones hacen el trabajo.
 
-La tabla de estaciones vive en `stations.json`, junto a este archivo. Es la
-única fuente: cuando una estación gane skill o cambie de comando, se edita
-ahí y este skill lo refleja solo.
+La tabla de estaciones y sus transiciones viven en `stations.json`, junto a
+este archivo. Es la única fuente: cuando una estación gane skill, cambie de
+comando o gane una rama, se edita ahí y este skill lo refleja solo.
 
 ## Regla única
 
@@ -60,10 +60,16 @@ usuario como entrada.
 ## Paso 2: presentar la ruta tal cual
 
 Muestra la salida del script sin resumirla: la tabla con el estado de cada
-estación (`existe`, `manual`, `por construir`), las preguntas abiertas y el
-siguiente paso. Si conoces el producto lo bastante para añadir preguntas
-abiertas sobre la idea (alcance, usuarios, qué no es), añádelas debajo de
-las del script, como preguntas, no como decisiones.
+estación (`existe`, `manual`, `por construir`), la **ruta** (el camino feliz
+desde la estación de entrada, un paso numerado por estación con su comando),
+las **ramas** de la estación de entrada ("Si te sales del camino": cuándo y
+con qué comando se sale del camino feliz; solo aparece si las hay), las
+preguntas abiertas y el siguiente paso. La ruta y las ramas salen de
+`transitions` en `stations.json`; se muestran, no se detectan: `when` es
+texto para quien lee, y decidir si aplica es del usuario. Si conoces el
+producto lo bastante para añadir preguntas abiertas sobre la idea (alcance,
+usuarios, qué no es), añádelas debajo de las del script, como preguntas, no
+como decisiones.
 
 Cuando una estación marca **proveedor no disponible**, dilo en una línea con
 la causa que da el script (binario ausente, cuota, clave). No lo resuelvas.
@@ -112,7 +118,9 @@ estación siguiente; que el wayfinder la cruzara por él sería ejecutar.
 termina con `/buzz-kickoff docs/specs/login-con-enlace-magico-por.md`.
 
 `/wayfinder JAR-12`
-→ issue, entra por Build, no escribe nada, termina con `/build-kickoff JAR-12`.
+→ issue, entra por Build, muestra la ruta Build → Review → Ship con sus
+comandos y las ramas de Build, no escribe nada, termina con
+`/build-kickoff JAR-12`.
 
 `/wayfinder https://github.com/andrulli85/x/pull/4`
 → PR, entra por Review, reporta si la familia opuesta tiene binario, termina
