@@ -1,0 +1,49 @@
+{
+  "team": "JAR",
+  "spec": "docs/specs/anadir-un-script-npm-run.md",
+  "issues": [
+    {
+      "ref": "refactor",
+      "title": "Extraer stationStatus y stationRow de route.mjs y detectar skills en otra copia",
+      "labels": [
+        "Improvement"
+      ],
+      "priority": 3,
+      "blockedBy": [],
+      "description": "## Objetivo\nQue el estado de una estación sea una función reutilizable (`stationStatus(station, world)`) y la fila de la tabla otra (`stationRow(s)`), para que `stations.mjs` y el wayfinder compartan una sola regla de estado y un solo formato. Sin cambio visible en la salida del wayfinder.\n\n## Contexto\nHoy `buildRoute` calcula el estado inline en un `.map` y `renderMarkdown` formatea la fila inline (`skills/wayfinder/scripts/route.mjs`). `findSkill` no distingue un enlace personal que apunta a otra copia del skill (p. ej. `andy-toolkit`) de uno que apunta a la fábrica. Decisiones D1, D3, D4 y supuestos S3, S4 en `docs/grill/npm-run-stations/verdict.md`.\n\n## Alcance\n- Extraer `stationStatus(station, world)` exportada; `buildRoute` la usa. Prioridad de agregación: `por construir > sin enlazar > otra copia > manual > existe`.\n- Extraer `stationRow(s)` exportada; `renderMarkdown` la usa.\n- `findSkill`: si la skill está en `factoryDir/<name>/SKILL.md` y el `SKILL.md` personal existe pero su `realpathSync` no cae dentro de `realpathSync(factoryDir)` (comparar con `path.relative`, no `startsWith`) → `{ status: \"otra copia\", where: <ruta real>, link: \"ln -sfn <fábrica> <personal>\" }`.\n- `providerFor` con `opposite: \"author\"` y sin autor → `{ need, opposite: null, available: null, channels: { claude: <bin|null>, codex: <bin|null> }, why }`. `renderMarkdown` sigue imprimiendo `**proveedor no disponible**: <why>` cuando `available !== true`.\n- `renderMarkdown`: para `otra copia` en la primera estación imprime el comando y la línea `ln -sfn …`, sin bloquear.\n- `fakeWorld` (test) gana `linked: [...]` para crear symlinks reales a `factoryDir`, con comentario de por qué.\n\n## Criterios de aceptación\n- `npm test` en verde con los tests existentes sin tocar.\n- Test nuevo: skill en `otra copia` con symlink real a otro directorio → estado `otra copia`, `link` con `ln -sfn`.\n- Test nuevo: `stationStatus` directo sobre una estación devuelve `{ n, id, name, in, out, skills, manual, provider, status, command }`.\n- Test nuevo: Review sin autor devuelve `available: null` con `channels.claude` y `channels.codex`.\n- `node skills/wayfinder/scripts/route.mjs \"una idea\"` produce la misma salida que antes del cambio en esta máquina.\n\n## Dependencias\nNinguna. Es el prefactoring: va primero.",
+      "subtasks": [],
+      "key": "JAR-5",
+      "url": "https://linear.app/jarviis-app/issue/JAR-5/extraer-stationstatus-y-stationrow-de-routemjs-y-detectar-skills-en"
+    },
+    {
+      "ref": "script",
+      "title": "Añadir stations.mjs y el script npm run stations con --json, --check y --cwd",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "refactor"
+      ],
+      "description": "## Objetivo\nUn comando que imprime la tabla de las cinco estaciones con su estado real en esta máquina, sin necesitar una entrada, para comprobar la instalación de la fábrica de un vistazo y, con `--check`, desde un script.\n\n## Contexto\nDecisiones D2, D4, D5, D6 y supuesto S1 en `docs/grill/npm-run-stations/verdict.md`. Reutiliza `stationStatus` y `stationRow` del issue anterior y `status()` de `providers/index.mjs`.\n\n## Alcance\n- `skills/wayfinder/scripts/stations.mjs` (ESM) importa `{ STATIONS, stationStatus, stationRow }` de `./route.mjs` y `{ status as providersStatus }` de `../../../providers/index.mjs`.\n- `collectStations(world = {})` exportada: mismo `world` inyectable que `buildRoute` (cwd, skillsDir, pluginsDir, providers, factoryDir); devuelve `{ stations, providers, cwd }`.\n- `renderStations(result)` exportada: tabla `| # | Estación | Entrada → Salida | Skills | Estado |` vía `stationRow`, pie `Proveedores: claude <ruta|—> · codex <ruta|—> · openrouter <clave presente|—> · autor <familia|—>`; Review sin autor muestra `opuesta al autor: claude ✓ · codex ✓` (✗ donde falte); lista \"Arreglos\" con los `ln` de las skills en `sin enlazar` / `otra copia`. No contiene \"Siguiente paso\".\n- `failures(result)` exportada: una cadena por skill en `por construir` / `sin enlazar` / `otra copia`, por proveedor con `available === false`, y por familia a `null` en `channels` cuando `available === null`. `manual` no cuenta.\n- `main` con el mismo guard `invokedDirectly` que `route.mjs`; flags `--json`, `--check`, `--cwd DIR`. Exit `--check && failures(result).length ? 1 : 0`.\n- `package.json`: `\"stations\": \"node skills/wayfinder/scripts/stations.mjs\"`.\n\n## Criterios de aceptación\n- `npm run stations` imprime las 5 filas en esta máquina.\n- `npm run stations -- --json | jq '.stations | length'` → `5`.\n- `npm run stations -- --check; echo $?` → `0` con la instalación actual.\n- `npm run stations -- --cwd /tmp` funciona igual que `route.mjs --cwd`.\n- Documentado que con `--check` fallido npm imprime su bloque `npm error` (esperado, D6).\n\n## Dependencias\nBloqueado por el refactor de `route.mjs` (`stationStatus`, `stationRow`, `otra copia`).",
+      "subtasks": [],
+      "key": "JAR-6",
+      "url": "https://linear.app/jarviis-app/issue/JAR-6/anadir-stationsmjs-y-el-script-npm-run-stations-con-json-check-y-cwd"
+    },
+    {
+      "ref": "tests",
+      "title": "Cubrir stations.mjs con tests de fixture y documentar npm run stations en el README",
+      "labels": [
+        "Improvement"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "script"
+      ],
+      "description": "## Objetivo\nQue los estados que imprime `npm run stations` estén probados con symlinks reales en un HOME temporal y que el README diga cómo usar el comando y qué significa cada estado.\n\n## Contexto\nDecisión D7 en `docs/grill/npm-run-stations/verdict.md`: tests con fixture temporal y symlinks reales, sin e2e, `main` sin test. `fakeWorld` vive hoy en `skills/wayfinder/test/route.test.mjs`.\n\n## Alcance\n- `skills/wayfinder/test/stations.test.mjs` con cuatro casos: (a) todo enlazado → 5 filas `existe`, `failures` vacío; (b) una skill `sin enlazar`, una `otra copia` (symlink real a otro directorio) y una `por construir` → estados correctos, `failures` con 3 entradas, el markdown lista los `ln`; (c) providers sin codex → Review con `codex ✗` y `failures` lo incluye; (d) `renderStations` no contiene \"Siguiente paso\".\n- `fakeWorld` a `skills/wayfinder/test/helpers.mjs` si `stations.test.mjs` necesita más de la mitad de sus parámetros; si no, duplicar la mínima.\n- README, sección \"Skills de la fábrica\": `npm run stations`, `npm run stations -- --json`, `npm run stations -- --check`, los cinco estados (`existe`, `manual`, `sin enlazar`, `otra copia`, `por construir`) y el recordatorio de reiniciar la sesión tras enlazar.\n\n## Criterios de aceptación\n- `npm test` en verde en la rama.\n- `git diff --stat` de la PR toca solo `route.mjs`, `route.test.mjs`, `stations.mjs`, `stations.test.mjs`, `package.json`, `README.md` (y `helpers.mjs` si se extrae).\n\n## Dependencias\nBloqueado por `stations.mjs`.",
+      "subtasks": [],
+      "key": "JAR-7",
+      "url": "https://linear.app/jarviis-app/issue/JAR-7/cubrir-stationsmjs-con-tests-de-fixture-y-documentar-npm-run-stations"
+    }
+  ]
+}
