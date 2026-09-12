@@ -11,6 +11,7 @@ se marca aquí con la fecha y el commit; el README no lleva estado.
 | 3 | `wayfinder` | `skills/wayfinder/` (SKILL.md, `stations.json`, `scripts/route.mjs`, evals). 21 tests unitarios y 6 casos headless | hecha 2026-09-11 (`bcc01b7`) |
 | 4 | `to-tickets-linear` | Fork de `to-tickets-jira` por GraphQL con `LINEAR_API_KEY` (sin MCP: pide OAuth interactivo y la skill debe correr headless contra un stub). Única estación que el wayfinder marca `por construir` | hecha 2026-09-11 (`21a804d`, `c99017c`) |
 | 5 | Workspace desde issue | `skills/build-kickoff/`: deep link `conductor://linear_id=<clave>&prompt=…` (workspace en la rama del issue) o `conductor://prompt=…&path=<repo>` sin Linear conectado. 7 tests y 4 casos headless | hecha 2026-09-11 (`76ae16a`) |
+| 6 | `docs/flows.md` | Mapa end to end generado desde `stations.json` (`transitions`, `npm run flows`, golden en `npm test`); el README enlaza al mapa y a `npm run stations` en vez de copiar la tabla | hecha 2026-09-12 (JAR-10 `5ad5ebb`, JAR-11 en esta PR) |
 
 ## Regla de cierre de fase
 
