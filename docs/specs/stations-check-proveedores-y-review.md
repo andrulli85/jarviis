@@ -1,9 +1,10 @@
 ---
 title: "npm run stations -- --check comprueba que cada proveedor responde y muestra la deuda de Review"
-status: sliced
+status: shipped
 date: 2026-09-12
 issue: [JAR-14, JAR-15]
 grill: docs/grill/stations-check-gpt/verdict.md
+learnings: [vault/learnings/2026-09-12-read-evidence-from-where-the-writer-puts-it.md]
 ---
 
 # `stations --check`: proveedores que responden y deuda de Review
