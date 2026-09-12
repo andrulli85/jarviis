@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { order, resolveTeam, publish, apiKey, withKeys } from "../scripts/linear.mjs";
+import { order, resolveTeam, publish, apiKey, withKeys, issueState } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
 
 const plan = (over = {}) => ({
@@ -188,5 +188,38 @@ test("publish resume: crea solo los que no tienen clave y las relaciones con un 
     assert.equal(creates.length, 4, "a + subtarea en la primera, b + c en la segunda; nada duplicado");
     const rels = stub.state.mutations.filter((m) => m.op === "issueRelationCreate").map((m) => m.input);
     assert.deepEqual(rels.map((x) => [x.issueId, x.relatedIssueId]), [["iss-1", "iss-3"], ["iss-1", "iss-4"], ["iss-3", "iss-4"]]);
+  });
+});
+
+/* ---------------------------------------------------------- issueState --- */
+
+/* Lo que el wayfinder necesita de un issue: la categoría de su estado y la
+   PR adjunta. El stub sirve `world.issues` tal cual por identificador. */
+const DONE_MERGED = { identifier: "JAR-8", state: { name: "Done", type: "completed" },
+  attachments: [{ sourceType: "github", metadata: { status: "merged" } }] };
+
+test("issueState: categoría del estado, nombre tal cual y la PR del último attachment github", async () => {
+  await withStub({ issues: [DONE_MERGED] }, async ({ env, stub }) => {
+    assert.deepEqual(await issueState("JAR-8", env), { type: "completed", name: "Done", pr: "merged" });
+    assert.deepEqual(stub.state.mutations, [], "leer no escribe");
+  });
+  await withStub({ issues: [{ identifier: "JAR-9", state: { name: "In Review", type: "started" },
+    attachments: [{ sourceType: "github", metadata: { status: "merged" } }, { sourceType: "slack", metadata: {} }, { sourceType: "github", metadata: { status: "open" } }] }] },
+    async ({ env }) => { assert.deepEqual(await issueState("JAR-9", env), { type: "started", name: "In Review", pr: "open" }); });
+  await withStub({ issues: [{ identifier: "JAR-10", state: { name: "Todo", type: "unstarted" }, attachments: [] }] },
+    async ({ env }) => { assert.deepEqual(await issueState("JAR-10", env), { type: "unstarted", name: "Todo", pr: null }); });
+});
+
+test("issueState: un issue que no existe lanza con su clave; sin clave de API lanza antes de la red", async () => {
+  await withStub({ issues: [DONE_MERGED] }, async ({ env }) => {
+    await assert.rejects(issueState("JAR-999", env), /JAR-999.*no existe/);
+  });
+  await assert.rejects(issueState("JAR-8", { HOME: "/nonexistent", JARVIIS_LINEAR_URL: "http://127.0.0.1:1/" }), /sin clave/);
+});
+
+test("issueState: sin red o con timeout lanza en 3 s como mucho, con la causa", async () => {
+  await assert.rejects(issueState("JAR-8", { LINEAR_API_KEY: "lin_test", JARVIIS_LINEAR_URL: "http://127.0.0.1:1/" }), /sin red/);
+  await withStub({ issues: [DONE_MERGED], delayMs: 200 }, async ({ env }) => {
+    await assert.rejects(issueState("JAR-8", { ...env, JARVIIS_LINEAR_TIMEOUT_MS: "50" }), /sin red.*timeout/i);
   });
 });

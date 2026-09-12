@@ -3,6 +3,7 @@
 
    node linear.mjs resolve <equipo>                  → tabla de resolución (JSON)
    node linear.mjs publish <plan.json> [--dry-run] [--resume]   → informe (JSON)
+   node linear.mjs issue <clave>                     → estado y PR adjunta (JSON)
 
    GraphQL directo contra api.linear.app con LINEAR_API_KEY. Sin MCP: el MCP
    oficial pide OAuth en sesión interactiva, y este script tiene que correr
@@ -41,14 +42,14 @@ export function apiKey(env = process.env) {
   return null;
 }
 
-async function gql(query, variables, env) {
+async function gql(query, variables, env, { timeoutMs = 30000 } = {}) {
   const key = apiKey(env);
   if (!key) throw new Error("sin clave de Linear: ni LINEAR_API_KEY ni ~/.config/linear/key");
   const r = await fetch(env.JARVIIS_LINEAR_URL || URL_DEFAULT, {
     method: "POST",
     headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(Number(env.JARVIIS_LINEAR_TIMEOUT_MS || 30000)),
+    signal: AbortSignal.timeout(Number(env.JARVIIS_LINEAR_TIMEOUT_MS || timeoutMs)),
   });
   const text = await r.text();
   let body; try { body = JSON.parse(text); } catch { body = null; }
@@ -259,6 +260,36 @@ function verify(report, payloads, relations) {
   return { count: report.created.length, expected: payloads.length, doneCategory, relationsMissing };
 }
 
+/* ---------------------------------------------------------- issueState --- */
+
+const Q_STATE = `query IssueState($key: String!) { issue(id: $key) {
+  identifier
+  state { name type }
+  attachments { nodes { sourceType metadata } }
+} }`;
+
+/* Lo que el wayfinder necesita para enrutar un issue: { type, name, pr }.
+   `type` es la categoría del estado (backlog, unstarted, started, completed,
+   canceled, duplicate), `name` el nombre tal cual, `pr` el `metadata.status`
+   del último attachment de GitHub ("open" | "merged") o null. Lanza sin
+   clave, sin red, o si el issue no existe; el timeout es corto (3 s) porque
+   corre en cada `/wayfinder JAR-n` y sin respuesta la ruta sigue sin él. */
+export async function issueState(key, env = process.env) {
+  let data;
+  try { data = await gql(Q_STATE, { key }, env, { timeoutMs: 3000 }); }
+  catch (e) {
+    if (/not found|no existe/i.test(e.message)) throw new Error(`${key} no existe en Linear`);
+    if (e.name === "TimeoutError" || e.name === "AbortError") throw new Error(`sin red: timeout leyendo ${key} en Linear`);
+    if (e.name === "TypeError" || e.cause) throw new Error(`sin red: ${e.cause?.code || e.message}`);
+    throw e;
+  }
+  const issue = data?.issue;
+  if (!issue) throw new Error(`${key} no existe en Linear`);
+  const github = (issue.attachments?.nodes || []).filter((a) => a.sourceType === "github");
+  const pr = github.length ? (github.at(-1).metadata?.status || null) : null;
+  return { type: issue.state.type, name: issue.state.name, pr };
+}
+
 /* ---------------------------------------------------------------- main --- */
 
 import { realpathSync } from "node:fs";
@@ -269,6 +300,7 @@ if (invokedDirectly) {
   const out = (o) => process.stdout.write(JSON.stringify(o, null, 2) + "\n");
   try {
     if (cmd === "resolve") out(await resolveTeam(arg));
+    else if (cmd === "issue") out(await issueState(arg));
     else if (cmd === "publish") {
       const plan = JSON.parse(readFileSync(arg, "utf8"));
       const r = await publish(plan, { dryRun: rest.includes("--dry-run"), resume: rest.includes("--resume") });
@@ -279,7 +311,7 @@ if (invokedDirectly) {
       out(r);
       if (r.ok === false) process.exit(1);
     } else {
-      console.error("uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume]");
+      console.error("uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>");
       process.exit(2);
     }
   } catch (e) { console.error(e.message); process.exit(1); }

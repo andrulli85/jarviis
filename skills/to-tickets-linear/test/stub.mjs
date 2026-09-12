@@ -16,6 +16,11 @@ export async function linearStub(world = {}) {
     labels: world.labels || [{ id: "lb-fabrica", name: "fabrica", team: { id: "team-1" } }, { id: "lb-bug", name: "Bug", team: null }, { id: "lb-ops", name: "ops-only", team: { id: "team-2" } }],
     teams: world.teams || null,
     issues: new Map(),
+    /* Issues que ya existen antes de la corrida, para `query IssueState`:
+       [{ identifier, state: { name, type }, attachments: [{ sourceType, metadata }] }]. */
+    existing: world.issues || [],
+    /* Respuesta retrasada, para probar el timeout del cliente. */
+    delayMs: world.delayMs || 0,
     mutations: [],
     seq: 0,
     /* Permite simular un create que aterriza en Done aunque se pidió Backlog. */
@@ -32,7 +37,14 @@ export async function linearStub(world = {}) {
     const auth = req.headers.authorization;
     if (!auth || auth === "bad") { res.writeHead(401); return res.end(JSON.stringify({ errors: [{ message: "Authentication required" }] })); }
     const q = body.query, v = body.variables || {};
+    if (state.delayMs) await new Promise((r) => setTimeout(r, state.delayMs));
     const reply = (data) => { res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data })); };
+    if (/query IssueState/.test(q)) {
+      const i = state.existing.find((x) => x.identifier === v.key);
+      /* Linear responde con un error, no con null, a un identificador que no existe. */
+      if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue - Could not find referenced Issue." }] })); }
+      return reply({ issue: { identifier: i.identifier, state: i.state, attachments: { nodes: i.attachments || [] } } });
+    }
     if (state.failOn && q.includes(state.failOn)) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "boom on " + state.failOn }] })); }
     if (/query Viewer/.test(q)) return reply({ viewer: { id: "u-1", name: "Andres", email: "a@x" } });
     if (/query Teams/.test(q)) return reply({ teams: { nodes: state.teams || [state.team, { id: "team-2", key: "OPS", name: "Operaciones" }] } });
