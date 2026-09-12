@@ -216,6 +216,23 @@ export function branches(entry, stations = STATIONS, fill = (t) => t) {
   return (s.transitions || []).filter((t) => t.when).map((t) => ({ when: t.when, to: t.to, command: fill(t.command), skill: t.skill || null }));
 }
 
+/* ------------------------------------------------------- entryForState --- */
+
+/* Por qué estación entra un issue según su estado en Linear: la categoría
+   (`type`, que un admin no edita; el nombre sí) y la PR adjunta. La tabla
+   de la spec, en orden de precedencia: un issue cancelado no tiene ruta
+   aunque su PR haya mergeado (reabrirlo es una decisión, no un comando);
+   una PR mergeada o un estado completed van a Ship; started con PR abierta
+   está en revisión; todo lo demás es Build, que es lo que hacía el
+   wayfinder sin leer Linear. */
+export function entryForState(state) {
+  if (!state) return "build";
+  if (state.type === "canceled" || state.type === "duplicate") return null;
+  if (state.pr === "merged" || state.type === "completed") return "ship";
+  if (state.type === "started" && state.pr === "open") return "review";
+  return "build";
+}
+
 /* ---------------------------------------------------------- buildRoute --- */
 
 const ENTRY_KIND = { idea: "shape", spec: "slice", issue: "build", pr: "review", merged: "ship" };

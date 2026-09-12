@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, STATIONS } from "../scripts/route.mjs";
+import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, entryForState, STATIONS } from "../scripts/route.mjs";
 import { fakeWorld } from "./helpers.mjs";
 
 /* ------------------------------------------------------------ classify --- */
@@ -409,4 +409,32 @@ test("un ciclo en el camino feliz o dos transiciones sin when son stations.json 
   assert.throws(() => path("a", ciclo), (e) => /\bB\b/.test(e.message) && /ciclo/.test(e.message));
   const dos = [{ ...TRES[0], transitions: [{ to: "b", command: "/b" }, { to: "c", command: "/c" }] }, TRES[1], TRES[2]];
   assert.throws(() => path("a", dos), (e) => /\bA\b/.test(e.message) && /2 transiciones sin when/.test(e.message));
+});
+
+/* ------------------------------------------------------- entryForState --- */
+
+/* La tabla del mapeo de la spec, fila a fila. Por categoría (`type`), nunca
+   por nombre: el nombre lo edita un admin y la categoría no. */
+test("entryForState: backlog y unstarted entran por Build, tengan o no PR abierta", () => {
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: null }), "build");
+  assert.equal(entryForState({ type: "unstarted", name: "Todo", pr: null }), "build");
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: "open" }), "build");
+});
+
+test("entryForState: started sin PR es Build; started con PR abierta es Review", () => {
+  assert.equal(entryForState({ type: "started", name: "In Progress", pr: null }), "build");
+  assert.equal(entryForState({ type: "started", name: "In Review", pr: "open" }), "review");
+});
+
+test("entryForState: PR mergeada o completed entran por Ship", () => {
+  assert.equal(entryForState({ type: "started", name: "In Review", pr: "merged" }), "ship");
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: "merged" }), "ship");
+  assert.equal(entryForState({ type: "completed", name: "Done", pr: null }), "ship");
+  assert.equal(entryForState({ type: "completed", name: "Done", pr: "merged" }), "ship");
+});
+
+test("entryForState: canceled y duplicate no tienen ruta, ni con PR mergeada", () => {
+  assert.equal(entryForState({ type: "canceled", name: "Canceled", pr: null }), null);
+  assert.equal(entryForState({ type: "duplicate", name: "Duplicate", pr: null }), null);
+  assert.equal(entryForState({ type: "canceled", name: "Canceled", pr: "merged" }), null);
 });
