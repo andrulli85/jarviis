@@ -165,6 +165,16 @@ rondas, defiende cada recomendación y anota lo que cambie; Andres cierra con
 en terminal es el respaldo cuando Buzz o el agente no están disponibles. La
 regla no cambia: nada llega a Linear antes del `✅`.
 
+**Quién decide en ese grill**: Claude Terminal decide todas las preguntas del
+quiz (granularidad, bloqueos, etiquetas, prioridad derivada de un hecho) y
+las que Codex Grill añada; Andres valida el paquete entero con el `✅` y
+veta antes lo que quiera. Una pregunta va a Andres con `@Andy` solo si es de
+intención de producto (qué se construye, qué se deja fuera). Las preguntas
+del brief que Codex Grill no trate quedan con la recomendación de Claude
+Terminal y así se listan en el cierre; ninguna queda "pendiente" sin
+decisión. Medido el 2026-09-12: dos preguntas sin tratar se le pasaron a
+Andres como si fueran de otra naturaleza, y no lo eran.
+
 ### 5. Publicar
 
 ```
