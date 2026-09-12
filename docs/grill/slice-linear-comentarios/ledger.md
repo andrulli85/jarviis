@@ -6,9 +6,9 @@
 ## Árbol de diseño (estado)
 
 - [x] Granularidad del cambio en `linear.mjs` — DECIDIDA (Q1, D1)
-  - [x] `create --blocked-by` reutiliza la ruta compuesta de `publish` — DECIDIDA (D1; D11 por incorporar a la spec tras el ✅)
-  - [x] Un bloqueador que es clave de Linear se resuelve como issue externo antes de escribir — DECIDIDA (D1; D11 por incorporar a la spec tras el ✅)
-  - [x] La vía única incluye retirar la consulta GraphQL directa de `build-kickoff/open.mjs` — vigente por D7 de la spec
+  - [x] `create --blocked-by` reutiliza la ruta compuesta de `publish` — DECIDIDA (D1 / D11 de la spec)
+  - [x] Un bloqueador que es clave de Linear se resuelve como issue externo antes de escribir — DECIDIDA (D1 / D11 de la spec)
+  - [x] La vía única incluye retirar la consulta GraphQL directa de `build-kickoff/open.mjs` — DECIDIDA (D5 / D12 de la spec)
 - [x] `move` rechaza categorías `completed`/`canceled` — DECISIÓN VIGENTE POR DEFECTO (Q2; A de Claude Terminal)
 - [x] Avisos de bloqueo sin temporizador — DECISIÓN VIGENTE POR DEFECTO (Q3; A de Claude Terminal)
 - [x] Autor y destino de los comentarios de Slice — DECISIÓN VIGENTE POR DEFECTO (Q4; A de Claude Terminal)
@@ -20,10 +20,11 @@
 - D2. `move` rechaza `completed` y `canceled` con salida 3; el cierre se conserva para la PR de Build. (Q2 no tratada por el tope; recomendación A vigente de Claude Terminal, 2026-09-12, Claude Terminal `68d8a24b`)
 - D3. Al bloqueo y al retomarlo se deja comentario; no habrá temporizador de 24 h. (Q3 no tratada por el tope; recomendación A vigente de Claude Terminal, 2026-09-12, Claude Terminal `68d8a24b`)
 - D4. Claude Terminal comenta una vez en cada issue al publicar, con resumen validado del desglose y enlace al veredicto. (Q4 no tratada por el tope; recomendación A vigente de Claude Terminal, 2026-09-12, Claude Terminal `68d8a24b`)
+- D5. D12 incorporada al borrador y a la spec: `open.mjs` importará `issue` de `linear.mjs` para `title` y `spec`; `api.linear.app` queda permitido solo en `linear.mjs` y su test. (Hallazgo de Q1, 2026-09-12, Claude Terminal `68d8a24b`)
 
 ## Supuestos (tuyos, hasta que alguien los confirme o corrija)
 
-- S1. El `verdict.md` local se copiará o expondrá en `docs/grill/linear-comentarios/` antes de publicar, para que el comentario de D4 tenga un enlace que el lector de Linear pueda abrir. La decisión de D4 exige el enlace; esta es la vía por defecto del flujo existente y Andy la valida con el paquete. (Q4, 2026-09-12)
+- S1. La copia canónica existe en `docs/grill/slice-linear-comentarios/verdict.md`; al publicar, el comentario usará su permalink accesible desde Linear, no la ruta local `PLANS/`. Andy valida ese valor por defecto con el paquete. (Q4, 2026-09-12)
 
 ## Registro de preguntas
 
@@ -32,4 +33,4 @@
 **Recomendación:** C. `publish` ya compone creación y relaciones con relectura y recuperación parcial; extraer ese flujo a `create --blocked-by` junto con los cuatro comandos nuevos hace que el primer issue tenga dos mutaciones compuestas, seis contratos y dos semánticas de reintento. Separarlo permite demostrar primero la puerta común y tratar la creación atómica/relación como el riesgo propio.
 **Respuesta:** "A, con una restricción de diseño". `create` envuelve a `publish`; `blockedBy: JAR-14` se resuelve como issue externo existente, de modo que ambos comparten reintento, backlog, relectura, verificación y relación. Acepta el cambio de `order()` y relaciones, y conserva los dos issues. — Claude Terminal `68d8a24b`, 2026-09-12
 
-**Réplica:** La objeción era la segunda ruta compuesta; D1/D11 la elimina, por lo que no queda razón para partir. Se añade al cambio del borrador que D7 requiere quitar la consulta GraphQL directa de `build-kickoff/scripts/open.mjs`, no solo prohibir las cadenas `curl`/`graphql` en el prompt.
+**Réplica:** La objeción era la segunda ruta compuesta; D1/D11 la elimina, por lo que no queda razón para partir. El hallazgo se incorporó como D12: D7 requiere quitar la consulta GraphQL directa de `build-kickoff/scripts/open.mjs`, no solo prohibir las cadenas `curl`/`graphql` en el prompt.

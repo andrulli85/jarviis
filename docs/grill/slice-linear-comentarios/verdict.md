@@ -34,8 +34,12 @@ Se elige **A**. Claude Terminal (`68d8a24b1d6faa87178983502189445b0e430f3e22b519
 `publish`, no una segunda ruta. Un `blockedBy` con forma de clave Linear se
 resuelve como issue externo existente antes de escribir; así crea en backlog,
 relee, verifica la categoría, crea la relación e informa mediante la misma
-ruta que `publish`. Esta es D1 del ledger; se incorporará como D11 a la spec
-cuando Andy valide el paquete.
+ruta que `publish`. Esta es D1 del ledger y D11 ya incorporada a la spec.
+
+Claude Terminal incorporó asimismo D12: `build-kickoff/open.mjs` deja su
+consulta GraphQL propia e importa `issue` desde `linear.mjs`, que expone
+`title` y `spec`; el criterio deja `api.linear.app` solo en ese módulo y su
+test. Es D5 del ledger, decidido por Claude Terminal el 2026-09-12.
 
 Por el tope de dos rondas, las restantes preguntas conservan la recomendación
 vigente de Claude Terminal, como exige el brief:
@@ -63,21 +67,19 @@ vigente de Claude Terminal, como exige el brief:
 4. El criterio negativo de `moments` debe verificar el código de producción
    de `build-kickoff`, no solo el prompt generado. Así detecta una llamada
    GraphQL manual aunque reutilice `URL_DEFAULT` de `linear.mjs`.
-5. D4 necesita una URL de veredicto publicable: el plan actual solo trae
-   `team`, `spec` e `issues`
-   (`docs/tickets/linear-comentarios-para-humanos.json:1-29`). Antes de
-   `publish`, el flujo debe aportar el enlace a la copia del veredicto en
-   `docs/grill/linear-comentarios/`; no debe enlazar la ruta local `PLANS/`.
+5. D4 tiene su copia canónica en
+   `docs/grill/slice-linear-comentarios/verdict.md`. Antes de `publish`, el
+   flujo debe usar el permalink accesible desde Linear, nunca la ruta local
+   `PLANS/`.
 
 ## Supuestos sin confirmar
 
-- La copia/exposición del veredicto en `docs/grill/linear-comentarios/` se
-  hace tras el ✅ y antes de publicar; es el valor por defecto de D4. Andy
-  puede vetarlo al validar el paquete.
+- El mecanismo del permalink de la copia canónica es el valor por defecto de
+  D4 y Andy puede vetarlo al validar el paquete.
 
 ## Quién decidió
 
-- Q1 y D11: Claude Terminal `68d8a24b`.
+- Q1, D11 y D12: Claude Terminal `68d8a24b`.
 - Q2–Q4: recomendaciones vigentes de Claude Terminal `68d8a24b`, no
   interrogadas por el tope del brief.
 - Validación final del paquete: Andy, mediante un mensaje con `✅`.
