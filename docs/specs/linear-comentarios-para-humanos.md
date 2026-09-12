@@ -18,6 +18,8 @@ puerta al tablero.
 
 Shape: propuesta de Claude Terminal + revisión de GPT-5.6 (`codex exec`, `xhigh`), veredicto
 "ADOPTAR CON CAMBIOS"; prompt y respuesta en [`docs/grill/linear-comentarios/`](../grill/linear-comentarios/gpt-review.md).
+Slice: quiz cruzado en Buzz (Codex Grill ↔ Claude Terminal, 2 rondas) en
+[`docs/grill/slice-linear-comentarios/`](../grill/slice-linear-comentarios/verdict.md): D11 y D12.
 
 ## Decisiones
 
@@ -33,6 +35,8 @@ Shape: propuesta de Claude Terminal + revisión de GPT-5.6 (`codex exec`, `xhigh
 | D8 | `move` nunca lleva a una categoría `completed`/`canceled`: el cierre lo hace la PR de Build (propiedad existente del skill, extendida al comando) | to-tickets-linear |
 | D9 | Los prompts de `build-kickoff` dicen los tres momentos y el comando exacto; el agente no redacta GraphQL. `build-kickoff` mueve a In Progress al arrancar y a In Review al abrir la PR (regla ya vigente, ahora por comando) | memoria del 2026-09-12 |
 | D10 | La PR de docs que publica borrador y spec no nombra claves (regla ya escrita en `to-tickets-linear`, PR #19) | hoy |
+| D11 | `create` es azúcar sobre `publish` (plan de un issue por el mismo camino); `publish` acepta en `blockedBy` una clave existente como issue externo. Una sola ruta compuesta en el script | quiz cruzado Q1 |
+| D12 | D7 no se cumple hoy: `build-kickoff/scripts/open.mjs` (`fetchIssue`) hace GraphQL propio; pasa a importar `issue` de `linear.mjs`, que devuelve también `title` y `spec`. Criterio: `api.linear.app` solo aparece en `linear.mjs` y su test | quiz cruzado, hallazgo |
 
 ## Contrato de `linear.mjs`
 
@@ -40,11 +44,12 @@ Todos los comandos: resuelven ids en la corrida, salen con JSON en stdout, exit 
 stderr; `--dry-run` renderiza el payload sin escribir; probados contra `test/stub.mjs`.
 
 - `comment <clave> <texto | ->`: `commentCreate` con el texto (de argumento o stdin). Devuelve `{ key, commentId, url }`.
-- `create --team <clave|nombre> --title … --description <texto | -> [--label …] [--priority 0-4] [--blocked-by <clave>…] [--assignee me]`: un issue en el primer estado `backlog`; con `--blocked-by`, crea la relación; devuelve `{ key, url }`.
+- `create --team <clave|nombre> --title … --description <texto | -> [--label …] [--priority 0-4] [--blocked-by <clave>…] [--assignee me]`: envoltorio de `publish` con un plan de un issue (D11); devuelve `{ key, url }`.
 - `assign <clave> [me]`: `assigneeId` = viewer. Devuelve `{ key, assignee }`.
 - `move <clave> <nombre de estado>`: resuelve por nombre en el equipo del issue; rechaza categorías `completed`/`canceled` (D8) con exit 3.
 - `link <A> blocks <B>`: `issueRelationCreate` tipo `blocks`; idempotente si ya existe.
-- `publish`: además de hoy, `assigneeId` = viewer en cada create (D7).
+- `publish`: además de hoy, `assigneeId` = viewer en cada create (D7) y `blockedBy` con clave externa (D11).
+- `issue <clave>`: además del estado, `title` y `spec` (D12); `build-kickoff` lo importa.
 
 ## Rebanadas
 
@@ -57,7 +62,7 @@ stderr; `--dry-run` renderiza el payload sin escribir; probados contra `test/stu
 - `SKILL.md` de `to-tickets-linear`: sección "Comandos del tablero" con los cinco.
 
 Criterios: `npm test` en verde; `node linear.mjs comment JAR-15 "prueba" --dry-run` renderiza
-sin escribir; `move JAR-15 Done` sale 3.
+sin escribir; `move JAR-15 Done` sale 3; `api.linear.app` solo en `linear.mjs` y su test (D12).
 
 ### 2. Los tres momentos en Build y el comentario de Slice (D1–D6, D9) — bloqueada por 1
 

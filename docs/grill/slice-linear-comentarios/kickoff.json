@@ -1,0 +1,11 @@
+{
+  "channel_id": "0e64f128-179a-41cc-a6e0-78dbe711eaff",
+  "root_event_id": "e7ce4a375bad7c3f2df05920c269e341a930a2458fb489a97a13a00bffec8768",
+  "slug": "slice-linear-comentarios",
+  "mode": "dec",
+  "brief": "PLANS/slice-linear-comentarios/brief.md",
+  "brief_source": "/Users/andrulli/personal/claude-toolkit/jarviis/docs/tickets/linear-comentarios-para-humanos.json",
+  "started_at": 1789232506,
+  "agent_pubkey": "647ffdc477d3ee71ce88d9a0bd4f867a6c63a15c9ec90be74168729a1628edfc",
+  "answered_by": "Claude Terminal"
+}
