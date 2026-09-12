@@ -104,7 +104,7 @@ asume sin preguntar.
 |---|---|
 | Spec | `docs/specs/<slug>.md` en el repo del producto (no en el vault). La PR y la spec van en el mismo diff. |
 | Issue | Clave de Linear (`JAR-12`) es la clave única de todo el hilo. Título en imperativo. Descripción enlaza la spec. |
-| Workspace Conductor | Nombre = clave del issue. Rama según `git-conventions`, con la clave incluida para que Linear la detecte. |
+| Workspace Conductor | Uno por issue. Rama `<slug de la spec>/<clave>-<título en kebab>` (`flujos-end-to-end/jar-12-el-wayfinder-entra-por-la-estacion`): Conductor lista los workspaces por rama, así las cards de una spec quedan juntas; la clave dentro hace que Linear cierre el issue al merge. La pone `build-kickoff` en el prompt de arranque (decidido 2026-09-12). |
 | PR | Primera línea del cuerpo referencia la clave. Linear cierra el issue al merge. |
 | Learning | Frontmatter con `date:` y `issue: JAR-12`. |
 
