@@ -301,6 +301,13 @@ export async function buildRoute(input, world = {}) {
   if (!w.linearPrefix && (c.kind === "idea" || c.kind === "spec")) questions.push("¿qué prefijo de proyecto Linear usa este producto? (JARVIIS_LINEAR_PREFIX)");
 
   const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
+  /* Un issue cancelado o duplicado no tiene estación: reabrirlo es una
+     decisión del usuario, y el wayfinder no escribe en Linear. Sin ruta,
+     sin siguiente comando, y una sola pregunta. */
+  if (entry === null) {
+    questions.push(`${key} está ${state.type === "duplicate" ? "duplicado" : "cancelado"} en Linear: ¿reabrir o dejarlo?`);
+    return { kind: c.kind, input: text, key, pr: null, spec, slug, entry, state, stations: [], path: [], branches: [], questions, next: null, cwd: w.cwd };
+  }
   /* La tabla son las estaciones del camino feliz, en el orden del recorrido,
      no las que siguen a la entrada por índice. Con la línea lineal de hoy da
      lo mismo; con una rama en el camino feliz, no. */
@@ -345,15 +352,18 @@ export function stationRow(s, { provider = providerCell } = {}) {
 const PR_WORDS = { merged: "PR mergeada", open: "PR abierta" };
 function stateLine(r) {
   const pr = PR_WORDS[r.state.pr] ? ` (${PR_WORDS[r.state.pr]})` : "";
-  return `${r.key} está **${r.state.name}** en Linear${pr} → entra por **${r.next.name}**`;
+  return `${r.key} está **${r.state.name}** en Linear${pr} → ${r.next ? `entra por **${r.next.name}**` : "sin ruta"}`;
 }
 
 export function renderMarkdown(r) {
   if (r.kind === "invalid") return `**Sin ruta**: ${r.why}\n`;
   const lines = [];
   lines.push(`# Ruta: ${r.key || r.spec || r.input}`, "");
-  lines.push(`Entrada: **${r.kind}** → entra por **${r.next.name}**. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
+  lines.push(`Entrada: **${r.kind}** → ${r.next ? `entra por **${r.next.name}**` : "sin ruta"}. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
   if (r.state) lines.push(stateLine(r), "");
+  /* Sin ruta (issue cancelado) no hay tabla, camino ni comando: el último
+     renglón es la pregunta, que es lo único que hay que contestar. */
+  if (!r.next) { lines.push("## Preguntas abiertas", ""); for (const q of r.questions) lines.push(`- ${q}`); lines.push("", "## Siguiente paso", "", r.questions.at(-1), ""); return lines.join("\n"); }
   lines.push("| # | Estación | Entrada → Salida | Skills | Estado |", "|---|---|---|---|---|");
   for (const s of r.stations) lines.push(stationRow(s));
   lines.push("");

@@ -471,3 +471,93 @@ test("Done con PR mergeada entra por Ship: la salida dice de dónde salió el es
   assert.ok(md.indexOf("está **Done**") < md.indexOf("|---|"), "la línea de estado va antes de la tabla");
   assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings JAR-8`");
 });
+
+test("started con PR abierta entra por Review; started sin PR y backlog siguen en Build, con la línea de estado", async () => {
+  const review = await buildRoute("JAR-8", linearWorld({ type: "started", name: "In Review", pr: "open" }));
+  assert.equal(review.entry, "review");
+  assert.deepEqual(review.path.map((p) => p.station), ["review", "ship"]);
+  assert.equal(review.next.command, "/adversarial-review");
+  assert.match(renderMarkdown(review), /^JAR-8 está \*\*In Review\*\* en Linear \(PR abierta\) → entra por \*\*Review\*\*$/m);
+
+  const started = await buildRoute("JAR-8", linearWorld({ type: "started", name: "In Progress", pr: null }));
+  assert.equal(started.entry, "build");
+  assert.equal(started.next.command, "/build-kickoff JAR-8");
+  assert.deepEqual(started.state, { source: "linear", type: "started", name: "In Progress", pr: null });
+  assert.match(renderMarkdown(started), /^JAR-8 está \*\*In Progress\*\* en Linear → entra por \*\*Build\*\*$/m, "sin PR no hay paréntesis");
+
+  const backlog = await buildRoute("JAR-8", linearWorld({ type: "backlog", name: "Backlog", pr: null }));
+  assert.equal(backlog.entry, "build");
+  assert.deepEqual(backlog.questions, []);
+  assert.equal(renderMarkdown(backlog).trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
+});
+
+test("canceled no tiene ruta: next null, una pregunta, y el markdown termina con la pregunta en vez de un comando", async () => {
+  const r = await buildRoute("JAR-8", linearWorld({ type: "canceled", name: "Canceled", pr: null }));
+  assert.equal(r.entry, null);
+  assert.equal(r.next, null);
+  assert.deepEqual([r.stations, r.path, r.branches], [[], [], []]);
+  assert.deepEqual(r.state, { source: "linear", type: "canceled", name: "Canceled", pr: null });
+  assert.deepEqual(r.questions, ["JAR-8 está cancelado en Linear: ¿reabrir o dejarlo?"]);
+  const md = renderMarkdown(r);
+  assert.match(md, /^JAR-8 está \*\*Canceled\*\* en Linear → sin ruta$/m);
+  assert.doesNotMatch(md, /\|---\|/, "sin ruta no hay tabla");
+  assert.doesNotMatch(md, /build-kickoff/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "JAR-8 está cancelado en Linear: ¿reabrir o dejarlo?");
+  const dup = await buildRoute("JAR-8", linearWorld({ type: "duplicate", name: "Duplicate", pr: "merged" }));
+  assert.equal(dup.next, null);
+  assert.match(dup.questions[0], /duplicado/);
+});
+
+test("un lector que lanza no rompe la ruta: Build como siempre, state null y la causa en la pregunta", async () => {
+  for (const [why, re] of [["sin red: timeout leyendo JAR-8 en Linear", /\(sin red: timeout/], ["JAR-8 no existe en Linear", /\(JAR-8 no existe en Linear\)/]]) {
+    const r = await buildRoute("JAR-8", linearWorld(new Error(why)));
+    assert.equal(r.entry, "build");
+    assert.equal(r.state, null);
+    assert.equal(r.next.command, "/build-kickoff JAR-8");
+    assert.equal(r.questions.length, 1);
+    assert.match(r.questions[0], /^no pude leer el estado de JAR-8 en Linear \(/);
+    assert.match(r.questions[0], re);
+    assert.match(r.questions[0], /entra por Review o Ship$/);
+  }
+});
+
+test("sin lector (sin clave) no se llama a nada: Build, state null y la pregunta dice sin clave", async () => {
+  const r = await buildRoute("JAR-8", { ...goldenWorld(), issueState: null });
+  assert.equal(r.entry, "build");
+  assert.equal(r.state, null);
+  assert.deepEqual(r.questions, ["no pude leer el estado de JAR-8 en Linear (sin clave); si ya está en revisión o mergeado, entra por Review o Ship"]);
+  const md = renderMarkdown(r);
+  assert.doesNotMatch(md, /en Linear \(PR|está \*\*/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
+});
+
+test("por defecto, sin clave en el entorno, no hay lector: nada sale de la máquina", async () => {
+  const w = { ...goldenWorld(), issueState: undefined, env: { HOME: "/nonexistent", LINEAR_KEY_FILE: "/nonexistent", JARVIIS_LINEAR_URL: "http://127.0.0.1:1/" } };
+  const r = await buildRoute("JAR-8", w);
+  assert.equal(r.state, null);
+  assert.match(r.questions[0], /\(sin clave\)/);
+});
+
+test("idea, spec, PR y PR mergeada nunca invocan el lector; solo el issue", async () => {
+  const reader = fakeReader({ type: "completed", name: "Done", pr: "merged" });
+  const w = { ...fakeWorld({ specs: ["login.md"] }), issueState: reader };
+  for (const input of ["login con enlace mágico", "docs/specs/login.md", "docs/specs/otra.md", "PR #4", "PR #4 merged", "JAR-12 en la PR #3", ""]) {
+    const r = await buildRoute(input, w);
+    assert.equal(r.state ?? null, null, input);
+  }
+  assert.deepEqual(reader.calls, []);
+  await buildRoute("implementa JAR-12 ya", w);
+  assert.deepEqual(reader.calls, ["JAR-12"]);
+});
+
+test("por defecto, con clave en el entorno, el lector es el cliente real de linear.mjs (aquí contra el stub)", async () => {
+  const { linearStub } = await import("../../to-tickets-linear/test/stub.mjs");
+  const stub = await linearStub({ issues: [{ identifier: "JAR-8", state: { name: "Done", type: "completed" }, attachments: [{ sourceType: "github", metadata: { status: "merged" } }] }] });
+  try {
+    const env = { HOME: "/nonexistent", LINEAR_API_KEY: "lin_test", JARVIIS_LINEAR_URL: stub.url };
+    const r = await buildRoute("JAR-8", { ...goldenWorld(), issueState: undefined, env });
+    assert.deepEqual(r.state, { source: "linear", type: "completed", name: "Done", pr: "merged" });
+    assert.equal(r.next.command, "/learnings JAR-8");
+    assert.deepEqual(stub.state.mutations, [], "el wayfinder no escribe en Linear");
+  } finally { await stub.close(); }
+});
