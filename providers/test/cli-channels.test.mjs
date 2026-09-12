@@ -37,7 +37,7 @@ test("codex: esfuerzo explícito, sandbox por modo, modelo sin prefijo", () => {
 test("claude: la respuesta es stdout, system va delante del prompt", async () => {
   const env = neutralEnv({ CE_CLAUDE_BIN: fakeBin("claude", "cat") });
   const r = resolve({ need: "text", channel: "claude" }, env);
-  const a = await ask(r, { prompt: "hola ñandú", system: "eres breve" });
+  const a = await ask(r, { prompt: "hola ñandú", system: "eres breve", env });
   assert.equal(a.ok, true);
   assert.equal(a.text, "eres breve\n\nhola ñandú");
   assert.equal(a.channel, "claude");
@@ -45,21 +45,21 @@ test("claude: la respuesta es stdout, system va delante del prompt", async () =>
 
 test("claude: stdout vacío es un fallo, no una respuesta", async () => {
   const env = neutralEnv({ CE_CLAUDE_BIN: fakeBin("claude", "cat >/dev/null; true") });
-  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x" });
+  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x", env });
   assert.equal(a.ok, false);
   assert.match(a.why, /respuesta vacía/);
 });
 
 test("claude: código de salida distinto de 0 es un fallo con stderr", async () => {
   const env = neutralEnv({ CE_CLAUDE_BIN: fakeBin("claude", "cat >/dev/null; echo boom >&2; exit 3") });
-  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x" });
+  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x", env });
   assert.equal(a.ok, false);
   assert.match(a.why, /código 3.*boom/s);
 });
 
 test("claude: timeout mata y lo dice", async () => {
   const env = neutralEnv({ CE_CLAUDE_BIN: fakeBin("claude", "cat >/dev/null; sleep 5") });
-  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x", timeoutMs: 200 });
+  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "x", timeoutMs: 200, env });
   assert.equal(a.ok, false);
   assert.match(a.why, /timeout/);
 });
@@ -73,14 +73,14 @@ echo "banner: reasoning effort high"
 cat > "$OUT"
 `;
   const env = neutralEnv({ CE_CODEX_BIN: fakeBin("codex", script) });
-  const a = await ask(resolve({ need: "text", channel: "codex" }, env), { prompt: "respuesta ñ" });
+  const a = await ask(resolve({ need: "text", channel: "codex" }, env), { prompt: "respuesta ñ", env });
   assert.equal(a.ok, true);
   assert.equal(a.text, "respuesta ñ");
 });
 
 test("codex: si no escribe el archivo, es un fallo", async () => {
   const env = neutralEnv({ CE_CODEX_BIN: fakeBin("codex", "cat >/dev/null; echo banner") });
-  const a = await ask(resolve({ need: "text", channel: "codex" }, env), { prompt: "x" });
+  const a = await ask(resolve({ need: "text", channel: "codex" }, env), { prompt: "x", env });
   assert.equal(a.ok, false);
   assert.match(a.why, /respuesta vacía/);
 });
@@ -92,7 +92,7 @@ test("ask con resolución fallida no ejecuta nada", async () => {
 
 test("ask con prompt vacío no ejecuta nada", async () => {
   const env = neutralEnv({ CE_CLAUDE_BIN: fakeBin("claude", "echo nunca") });
-  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "  " });
+  const a = await ask(resolve({ need: "text", channel: "claude" }, env), { prompt: "  ", env });
   assert.equal(a.ok, false);
   assert.match(a.why, /prompt vacío/);
 });

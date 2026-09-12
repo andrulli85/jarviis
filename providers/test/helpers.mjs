@@ -1,6 +1,8 @@
 /* Entorno neutralizado: ningún test puede llegar a un proveedor real.
    Los binarios apuntan a rutas inexistentes, OpenRouter a un stub local que
-   cada test levanta, y la clave es de mentira. */
+   cada test levanta, y la clave es de mentira. El HOME temporal es además
+   donde `ask()` deja su evidencia de salud (D12): pásale `env` a `ask` o
+   escribirá en el health.json real. */
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -51,7 +53,9 @@ export async function openrouterStub(handler) {
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}/chat/completions`;
-  return { url, close: () => new Promise((r) => server.close(r)) };
+  /* closeAllConnections primero: un stream que el código bajo prueba dejó
+     abierto no debe colgar la suite, debe hacer fallar su test. */
+  return { url, close: () => { server.closeAllConnections?.(); return new Promise((r) => server.close(r)); } };
 }
 
 export const sse = (obj) => `data: ${JSON.stringify(obj)}\n\n`;
