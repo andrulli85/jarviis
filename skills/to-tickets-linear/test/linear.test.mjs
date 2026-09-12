@@ -223,3 +223,15 @@ test("issueState: sin red o con timeout lanza en 3 s como mucho, con la causa", 
     await assert.rejects(issueState("JAR-8", { ...env, JARVIIS_LINEAR_TIMEOUT_MS: "50" }), /sin red.*timeout/i);
   });
 });
+
+/* Hallazgo del review adversarial de la PR #13 (Codex, 2026-09-12): el
+   override global JARVIIS_LINEAR_TIMEOUT_MS (pensado para publish) subía
+   también el techo de issueState, y /wayfinder podía esperar un minuto a
+   Linear en vez de los 3 s de la spec. La variable puede acortar, no alargar. */
+test("issueState: JARVIIS_LINEAR_TIMEOUT_MS no alarga los 3 s de techo", async () => {
+  await withStub({ issues: [DONE_MERGED], delayMs: 3600 }, async ({ env }) => {
+    const t0 = Date.now();
+    await assert.rejects(issueState("JAR-8", { ...env, JARVIIS_LINEAR_TIMEOUT_MS: "60000" }), /sin red.*timeout/i);
+    assert.ok(Date.now() - t0 < 3500, "cortó a los 3 s, no a los 60");
+  });
+});

@@ -350,8 +350,9 @@ export async function buildRoute(input, world = {}) {
   /* Sin prefijo configurado, un token en mayúsculas con guion y número es
      tan clave de issue como estándar técnico (UTF-8, SHA-256). Sin prefijo
      se toma como clave, que es lo que Andres escribe cuando pega una, y se
-     pregunta; con prefijo no hay duda. */
-  if (c.kind === "issue" && !w.linearPrefix) {
+     pregunta; con prefijo no hay duda, y si Linear la resolvió tampoco: un
+     issue que existe no es un término técnico. */
+  if (c.kind === "issue" && !w.linearPrefix && !state) {
     questions.push(`he leído ${key} como clave de issue; si es un término técnico y no una clave, dímelo. Con JARVIIS_LINEAR_PREFIX no hay ambigüedad`);
   }
   if (!existsSync(join(w.cwd, ".git"))) questions.push(`${w.cwd} no es un repositorio git: ¿en qué repo vive el producto?`);
