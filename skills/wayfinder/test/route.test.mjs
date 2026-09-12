@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, mkdirSync, realpathSync, symlinkSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, STATIONS } from "../scripts/route.mjs";
+import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, STATIONS } from "../scripts/route.mjs";
 import { fakeWorld } from "./helpers.mjs";
 
 /* ------------------------------------------------------------ classify --- */
@@ -285,4 +285,121 @@ test("sin .git alrededor, FACTORY_SKILLS sigue siendo here/../..", async () => {
   const { main } = fakeFactory({ git: false });
   const { FACTORY_SKILLS } = await importRoute(main);
   assert.equal(FACTORY_SKILLS, join(main, "skills"));
+});
+
+/* --------------------------------------------------------- transitions --- */
+
+/* Tres estaciones y un `end`: a → b → c → end. Una rama en `a` (la entrada)
+   y otra en `b`, para comprobar que branches solo mira la entrada. El
+   comando de la transición a `b` difiere del `command` de `b` a propósito:
+   el paso lleva el comando de la transición que llega a él. */
+const fixtureStation = (n, id, name, extra = {}) => ({ n, id, name, in: id, out: id, entry: [], skills: [], command: `/${id} <key>`, manual: null, provider: null, transitions: [], ...extra });
+const TRES = [
+  fixtureStation(1, "a", "A", { transitions: [
+    { to: "b", command: "/b <key> (desde a)" },
+    { to: "outside", when: "la cosa es de otro plano", command: "/fuera <spec>", skill: "fuera-skill" },
+  ] }),
+  fixtureStation(2, "b", "B", { transitions: [
+    { to: "c", command: "/c" },
+    { to: "a", when: "falta algo en el plan", command: "/a otra vez" },
+  ] }),
+  fixtureStation(3, "c", "C", { transitions: [{ to: "end", command: null }] }),
+];
+
+test("path sigue la transición sin when desde cada entrada hasta end, con los comandos rellenos", () => {
+  const fill = (t) => t && t.replace("<key>", "JAR-1");
+  assert.deepEqual(path("a", TRES, fill), [
+    { station: "a", name: "A", command: "/a JAR-1" },
+    { station: "b", name: "B", command: "/b JAR-1 (desde a)" },
+    { station: "c", name: "C", command: "/c" },
+  ]);
+  assert.deepEqual(path("b", TRES, fill).map((p) => p.station), ["b", "c"]);
+  assert.deepEqual(path("c", TRES, fill), [{ station: "c", name: "C", command: "/c JAR-1" }]);
+});
+
+test("branches trae solo las transiciones con when de la estación de entrada, con el comando relleno", () => {
+  const fill = (t) => t && t.replace("<spec>", "docs/specs/x.md");
+  assert.deepEqual(branches("a", TRES, fill), [
+    { when: "la cosa es de otro plano", to: "outside", command: "/fuera docs/specs/x.md", skill: "fuera-skill" },
+  ]);
+  assert.deepEqual(branches("b", TRES, fill), [{ when: "falta algo en el plan", to: "a", command: "/a otra vez", skill: null }]);
+  assert.deepEqual(branches("c", TRES, fill), []);
+});
+
+test("una estación intermedia sin transición sin when es un error con su nombre, no una ruta corta", () => {
+  const rota = [TRES[0], { ...TRES[1], transitions: [{ to: "a", when: "solo rama", command: "/a" }] }, TRES[2]];
+  assert.throws(() => path("a", rota), (e) => /\bB\b/.test(e.message) && /when/.test(e.message));
+  assert.throws(() => path("a", [TRES[0], { ...TRES[1], transitions: [] }]), /\bB\b/);
+});
+
+test("buildRoute trae path y branches sobre el stations.json real; la tabla son las estaciones del path", () => {
+  const r = buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" });
+  assert.deepEqual(r.path, [
+    { station: "build", name: "Build", command: "/build-kickoff JAR-8" },
+    { station: "review", name: "Review", command: "/adversarial-review" },
+    { station: "ship", name: "Ship / Learn", command: "/learnings JAR-8" },
+  ]);
+  assert.deepEqual(r.stations.map((s) => s.id), r.path.map((p) => p.station));
+  assert.ok(r.branches.length >= 1);
+  const bloqueador = r.branches.find((b) => /bloqueador/.test(b.when));
+  assert.equal(bloqueador.to, "slice");
+  assert.equal(bloqueador.skill, "to-tickets-linear");
+  assert.match(bloqueador.command, /<equipo>/, "un placeholder sin dato queda visible");
+  assert.deepEqual(buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" }).next, r.next, "next no cambia");
+});
+
+test("una PR entra por Review y su path deja <key> visible en Ship; una idea recorre las cinco", () => {
+  const pr = buildRoute("PR #4", fakeWorld());
+  assert.deepEqual(pr.path.map((p) => p.command), ["/adversarial-review", "/learnings <key>"]);
+  assert.equal(pr.branches.length, 1);
+  assert.match(pr.branches[0].when, /reviewer/);
+  const idea = buildRoute("login mágico", fakeWorld());
+  assert.deepEqual(idea.path.map((p) => p.station), ["shape", "slice", "build", "review", "ship"]);
+  assert.equal(idea.path[0].command, "/buzz-kickoff docs/specs/login-magico.md");
+  assert.equal(idea.path[1].command, "/to-tickets-linear docs/specs/login-magico.md");
+  assert.deepEqual(idea.branches.map((b) => b.to), ["outside"]);
+  const invalid = buildRoute("", fakeWorld());
+  assert.deepEqual([invalid.path, invalid.branches], [[], []]);
+});
+
+/* -------------------------------------------------------------- golden --- */
+
+/* test/golden/*.md es la salida de renderMarkdown ANTES de que el wayfinder
+   leyera transitions (capturada el 2026-09-12 con este mismo mundo). La
+   salida de hoy es esa más las secciones "Ruta" y "Si te sales del camino":
+   quitándolas, tiene que ser idéntica (tabla y último renglón incluidos). */
+const TODAS = ["buzz-kickoff", "grilling", "to-tickets-linear", "build-kickoff", "tdd", "git-conventions", "adversarial-review", "code-review", "learnings"];
+const goldenWorld = () => ({ ...fakeWorld({ personal: TODAS }), linearPrefix: "JAR" });
+const golden = (name) => readFileSync(join(here(), "golden", name), "utf8");
+const sinSeccionesNuevas = (md) => md.replace(/## Ruta\n\n(?:.+\n)+\n/, "").replace(/## Si te sales del camino\n\n(?:.+\n)+\n/, "");
+
+test("golden JAR-8: la salida de hoy más Ruta y ramas, antes de Siguiente paso; el último renglón es el comando", () => {
+  const md = renderMarkdown(buildRoute("JAR-8", goldenWorld()));
+  assert.equal(sinSeccionesNuevas(md), golden("jar-8.md"));
+  assert.match(md, /## Ruta\n\n1\. Build — `\/build-kickoff JAR-8`\n2\. Review — `\/adversarial-review`\n3\. Ship \/ Learn — `\/learnings JAR-8`\n\n## Si te sales del camino\n\n- Si el issue destapa un bloqueador que no está en el plan: `\/to-tickets-linear <equipo> \(un issue que bloquea al actual; luego Build sobre el nuevo\)`\n- Si una PR cierra varios issues de la misma spec: `gh pr create --base main \(Closes <clave> por cada issue, sin rama nueva\)`\n\n## Siguiente paso/);
+  assert.ok(md.indexOf("|---|") < md.indexOf("## Ruta"), "la tabla va antes de la ruta");
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
+});
+
+test("golden idea: cinco pasos con la spec rellena y la rama del otro plano", () => {
+  const md = renderMarkdown(buildRoute("login con enlace mágico por email", goldenWorld()));
+  assert.equal(sinSeccionesNuevas(md), golden("idea.md"));
+  assert.match(md, /## Ruta\n\n1\. Shape — `\/buzz-kickoff docs\/specs\/login-con-enlace-magico-por\.md`\n2\. Slice — `\/to-tickets-linear docs\/specs\/login-con-enlace-magico-por\.md`\n3\. Build — `\/build-kickoff <key>`\n4\. Review — `\/adversarial-review`\n5\. Ship \/ Learn — `\/learnings <key>`\n/);
+  assert.match(md, /## Si te sales del camino\n\n- Si la historia es del plano de trabajo/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/buzz-kickoff docs/specs/login-con-enlace-magico-por.md`");
+});
+
+test("golden PR mergeada: un solo paso y sin sección de ramas", () => {
+  const md = renderMarkdown(buildRoute("PR #4 merged", goldenWorld()));
+  assert.equal(sinSeccionesNuevas(md), golden("pr-merged.md"));
+  assert.match(md, /## Ruta\n\n1\. Ship \/ Learn — `\/learnings <key>`\n\n## Siguiente paso/);
+  assert.doesNotMatch(md, /Si te sales del camino/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings <key>`");
+});
+
+test("las secciones nuevas van antes de las preguntas abiertas", () => {
+  const md = renderMarkdown(buildRoute("una idea", fakeWorld({ git: false })));
+  assert.ok(md.indexOf("## Ruta") < md.indexOf("## Si te sales del camino"));
+  assert.ok(md.indexOf("## Si te sales del camino") < md.indexOf("## Preguntas abiertas"));
+  assert.ok(md.indexOf("## Preguntas abiertas") < md.indexOf("## Siguiente paso"));
 });

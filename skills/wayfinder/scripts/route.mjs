@@ -4,9 +4,11 @@
    node route.mjs [--json] [--cwd DIR] "<idea | JAR-12 | PR #4 | docs/specs/x.md>"
 
    Todo lo que hay aquí es determinista: qué tipo de entrada es, por qué
-   estación entra, qué skills existen en esta máquina y qué proveedores
-   responden. Lo que requiere juicio (qué preguntas hacer sobre la idea, si
-   la spec está madura) lo hace la sesión leyendo la ruta, no este script.
+   estación entra, qué camino feliz y qué ramas salen de ahí según las
+   `transitions` de stations.json, qué skills existen en esta máquina y qué
+   proveedores responden. Lo que requiere juicio (qué preguntas hacer sobre
+   la idea, si la spec está madura, si una rama aplica) lo hace la sesión
+   leyendo la ruta, no este script.
 
    No ejecuta ninguna estación ni escribe nada. Imprime. */
 
@@ -172,6 +174,42 @@ export function stationStatus(s, w) {
   return { n: s.n, id: s.id, name: s.name, in: s.in, out: s.out, skills, manual: s.manual, provider, status, command: s.command };
 }
 
+/* ---------------------------------------------------------------- path --- */
+
+/* El camino feliz desde `entry`: en cada estación, la única transición sin
+   `when`; se para en `end` u `outside`. El primer paso lleva el comando de la
+   estación de entrada (lo que se corre al entrar); cada paso siguiente, el
+   comando de la transición que lo alcanza. `fill` rellena los placeholders
+   con lo que la entrada sabe; lo que no se sabe queda visible.
+
+   Una estación intermedia sin transición feliz no acorta la ruta: es
+   stations.json roto, y se dice con nombre. */
+export function path(entry, stations = STATIONS, fill = (t) => t) {
+  const byId = new Map(stations.map((s) => [s.id, s]));
+  const first = byId.get(entry);
+  if (!first) throw new Error(`estación de entrada desconocida: ${entry}`);
+  const steps = [{ station: first.id, name: first.name, command: fill(first.command) }];
+  let s = first;
+  for (;;) {
+    const happy = (s.transitions || []).find((t) => !t.when);
+    if (!happy) throw new Error(`la estación ${s.name} no tiene transición sin when: stations.json está roto`);
+    if (happy.to === "end" || happy.to === "outside") return steps;
+    const to = byId.get(happy.to);
+    if (!to) throw new Error(`la estación ${s.name} transiciona a "${happy.to}", que no es una estación ni end/outside`);
+    steps.push({ station: to.id, name: to.name, command: fill(happy.command) });
+    s = to;
+  }
+}
+
+/* Las ramas de la estación de entrada: sus transiciones con `when`. Solo la
+   entrada; las de las estaciones siguientes se verán al llegar a ellas. Se
+   muestran, no se detectan: `when` es texto para quien lee. */
+export function branches(entry, stations = STATIONS, fill = (t) => t) {
+  const s = stations.find((x) => x.id === entry);
+  if (!s) throw new Error(`estación de entrada desconocida: ${entry}`);
+  return (s.transitions || []).filter((t) => t.when).map((t) => ({ when: t.when, to: t.to, command: fill(t.command), skill: t.skill || null }));
+}
+
 /* ---------------------------------------------------------- buildRoute --- */
 
 const ENTRY_KIND = { idea: "shape", spec: "slice", issue: "build", pr: "review", merged: "ship" };
@@ -191,7 +229,7 @@ export function buildRoute(input, world = {}) {
   };
   const text = String(input || "").trim();
   const c = classify(text, { linearPrefix: w.linearPrefix });
-  if (c.kind === "invalid") return { kind: "invalid", input: text, why: "entrada vacía: dime una idea, una clave de issue, una PR o una spec", stations: [], questions: [], next: null };
+  if (c.kind === "invalid") return { kind: "invalid", input: text, why: "entrada vacía: dime una idea, una clave de issue, una PR o una spec", stations: [], path: [], branches: [], questions: [], next: null };
 
   const questions = [];
   let entry = ENTRY_KIND[c.kind];
@@ -216,15 +254,18 @@ export function buildRoute(input, world = {}) {
   if (!existsSync(join(w.cwd, ".git"))) questions.push(`${w.cwd} no es un repositorio git: ¿en qué repo vive el producto?`);
   if (!w.linearPrefix && (c.kind === "idea" || c.kind === "spec")) questions.push("¿qué prefijo de proyecto Linear usa este producto? (JARVIIS_LINEAR_PREFIX)");
 
-  const from = STATIONS.findIndex((s) => s.id === entry);
   const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
-  const stations = STATIONS.slice(from).map((s) => {
-    const st = stationStatus(s, w);
+  /* La tabla son las estaciones del camino feliz, en el orden del recorrido,
+     no las que siguen a la entrada por índice. Con la línea lineal de hoy da
+     lo mismo; con una rama en el camino feliz, no. */
+  const route = path(entry, STATIONS, fill);
+  const stations = route.map((p) => {
+    const st = stationStatus(STATIONS.find((s) => s.id === p.station), w);
     return { ...st, manual: fill(st.manual), command: fill(st.command) };
   });
   const first = stations[0];
   const next = { station: first.id, name: first.name, command: first.command, status: first.status, manual: first.manual };
-  return { kind: c.kind, input: text, key, pr: c.pr || null, spec, slug, entry, stations, questions, next, cwd: w.cwd };
+  return { kind: c.kind, input: text, key, pr: c.pr || null, spec, slug, entry, stations, path: route, branches: branches(entry, STATIONS, fill), questions, next, cwd: w.cwd };
 }
 
 /* ------------------------------------------------------------- render --- */
@@ -251,6 +292,13 @@ export function renderMarkdown(r) {
   lines.push("| # | Estación | Entrada → Salida | Skills | Estado |", "|---|---|---|---|---|");
   for (const s of r.stations) lines.push(stationRow(s));
   lines.push("");
+  /* El camino feliz paso a paso y, solo para la estación de entrada, sus
+     ramas. Van antes de "Siguiente paso" para que el último renglón siga
+     siendo un solo comando copiable. */
+  lines.push("## Ruta", "");
+  r.path.forEach((p, i) => lines.push(`${i + 1}. ${p.name}${p.command ? ` — \`${p.command}\`` : ""}`));
+  lines.push("");
+  if (r.branches.length) { lines.push("## Si te sales del camino", ""); for (const b of r.branches) lines.push(`- Si ${b.when}: \`${b.command}\``); lines.push(""); }
   if (r.questions.length) { lines.push("## Preguntas abiertas", ""); for (const q of r.questions) lines.push(`- ${q}`); lines.push(""); }
   lines.push("## Siguiente paso", "");
   if (r.next.status === "por construir") lines.push(`La estación **${r.next.name}** no tiene skill todavía. Hazla a mano: ${r.stations[0].in} → ${r.stations[0].out}.`);

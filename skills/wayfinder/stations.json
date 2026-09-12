@@ -1,5 +1,5 @@
 {
-  "_": "Única fuente de la línea de producción: estaciones y transiciones. El wayfinder lee las estaciones; `npm run flows` genera docs/flows.md de las transiciones; README.md copia la tabla como documentación. Al añadir una estación, cambiar una skill o añadir una rama, se edita aquí. `transitions`: [{ to, when?, command, skill? }]; sin `when` es el camino feliz; `to` es un id de estación, \"end\" (sale de la línea) u \"outside\" (no aterriza). Las entradas directas siguen en `entry`.",
+  "_": "Única fuente de la línea de producción: estaciones y transiciones. El wayfinder lee las estaciones y enruta con las transiciones; `npm run flows` genera docs/flows.md de las transiciones; README.md copia la tabla como documentación. Al añadir una estación, cambiar una skill o añadir una rama, se edita aquí. `transitions`: [{ to, when?, command, skill? }]; sin `when` es el camino feliz; `to` es un id de estación, \"end\" (sale de la línea) u \"outside\" (no aterriza). Las entradas directas siguen en `entry`.",
   "stations": [
     {
       "n": 1,
