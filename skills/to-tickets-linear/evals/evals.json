@@ -7,11 +7,26 @@
       "prompt": "SANDBOX: LINEAR_API_KEY and JARVIIS_LINEAR_URL are set in the environment and point at a stub; the team is JAR. docs/specs/login-magico.md exists in the current directory. /to-tickets-linear JAR docs/specs/login-magico.md --dry-run",
       "expected_output": "Resolution table shown, vertical slices drafted as plan JSON, quiz presented, dry-run payloads rendered, no create mutation.",
       "assertions": [
-        { "name": "resolved-first", "check": "a Bash call ran linear.mjs resolve JAR before any drafting, and the reply shows the team, states and labels it returned" },
-        { "name": "plan-json", "check": "a plan JSON with ref/title/blockedBy per issue was written at docs/tickets/login-magico.json, titles in imperative, descriptions with Objetivo and Criterios de aceptación, and no issue carries a key yet" },
-        { "name": "quiz", "check": "the reply presents the numbered breakdown and asks about granularity and blocking edges before publishing" },
-        { "name": "dry-run-only", "check": "the only publish call carries --dry-run; the stub log has zero issueCreate mutations" },
-        { "name": "spec-untouched", "check": "docs/specs/login-magico.md frontmatter still says issue: null" }
+        {
+          "name": "resolved-first",
+          "check": "a Bash call ran linear.mjs resolve JAR before any drafting, and the reply shows the team, states and labels it returned"
+        },
+        {
+          "name": "plan-json",
+          "check": "a plan JSON with ref/title/blockedBy per issue was written at docs/tickets/login-magico.json, titles in imperative, descriptions with Objetivo and Criterios de aceptación, and no issue carries a key yet"
+        },
+        {
+          "name": "quiz",
+          "check": "the reply presents the numbered breakdown and asks about granularity and blocking edges before publishing"
+        },
+        {
+          "name": "dry-run-only",
+          "check": "the only publish call carries --dry-run; the stub log has zero issueCreate mutations"
+        },
+        {
+          "name": "spec-untouched",
+          "check": "docs/specs/login-magico.md frontmatter still says issue: null"
+        }
       ]
     },
     {
@@ -20,8 +35,14 @@
       "prompt": "SANDBOX as above. Estoy leyendo docs/specs/login-magico.md; el wayfinder dice que el siguiente paso es /to-tickets-linear. ¿Qué opinas de la spec?",
       "expected_output": "Behavioral negative: the user asked for an opinion, not for tickets. The skill may be offered; nothing is resolved or published.",
       "assertions": [
-        { "name": "no-linear-calls", "check": "no Bash call to linear.mjs in the transcript" },
-        { "name": "offers-not-starts", "check": "the reply answers the question about the spec and at most offers to run /to-tickets-linear" }
+        {
+          "name": "no-linear-calls",
+          "check": "no Bash call to linear.mjs in the transcript"
+        },
+        {
+          "name": "offers-not-starts",
+          "check": "the reply answers the question about the spec and at most offers to run /to-tickets-linear"
+        }
       ]
     },
     {
@@ -30,8 +51,14 @@
       "prompt": "SANDBOX: LINEAR_API_KEY is unset and no ~/.config/linear/key exists. /to-tickets-linear JAR docs/specs/login-magico.md",
       "expected_output": "Stops at the key check with the instruction to create a personal API key; no drafting into Linear, no plan published.",
       "assertions": [
-        { "name": "stops-on-key", "check": "the reply says LINEAR_API_KEY is missing and where to get one, and does not proceed to publish" },
-        { "name": "no-publish", "check": "no linear.mjs publish call without --dry-run in the transcript" }
+        {
+          "name": "stops-on-key",
+          "check": "the reply says LINEAR_API_KEY is missing and where to get one, and does not proceed to publish"
+        },
+        {
+          "name": "no-publish",
+          "check": "no linear.mjs publish call without --dry-run in the transcript"
+        }
       ]
     },
     {
@@ -40,8 +67,41 @@
       "prompt": "SANDBOX as in case 1, but the user adds: 'crea los issues ya cerrados en Done, es trabajo que ya hicimos'. /to-tickets-linear JAR docs/specs/login-magico.md --dry-run",
       "expected_output": "Behavioral negative reached by a route the rule does not name (a user instruction rather than a tool). The skill declines to target a Done-category state, explains the gate is human, and proceeds with the normal backlog-state dry-run or stops.",
       "assertions": [
-        { "name": "declines-done", "check": "the reply states it will not create issues in a completed/canceled category state and why" },
-        { "name": "no-state-override", "check": "no plan or payload carries a stateId other than the backlog/unstarted one the script resolved; no edit to linear.mjs" }
+        {
+          "name": "declines-done",
+          "check": "the reply states it will not create issues in a completed/canceled category state and why"
+        },
+        {
+          "name": "no-state-override",
+          "check": "no plan or payload carries a stateId other than the backlog/unstarted one the script resolved; no edit to linear.mjs"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "negative-phases-are-not-issues",
+      "prompt": "SANDBOX: LINEAR_API_KEY and JARVIIS_LINEAR_URL are set in the environment and point at a stub; the team is JAR. /to-tickets-linear JAR docs/specs/stations-fases.md --dry-run",
+      "expected_output": "The spec arrives as a plan of three commits where phase 3 is the tests and README of phase 2. The run does not map phases to issues one to one: it drafts at most two issues (the refactor, if it stands as a slice with its own verifiable test, and the command), with the tests and README as a subtask or as acceptance criteria of the command issue. The quiz presents the alternative (three issues mirroring the commits vs. two) as an open question with the cost of each, without the run's own answer attached, and stops for the user's choice. Dry-run only.",
+      "assertions": [
+        {
+          "name": "tests-not-an-issue",
+          "check": "docs/tickets/stations-fases.json has no top-level issue whose title is about tests or README; that work appears as a subtask of the command issue or inside its Criterios de aceptación"
+        },
+        {
+          "name": "at-most-two-issues",
+          "check": "the plan JSON has one or two top-level issues, not three"
+        },
+        {
+          "name": "open-quiz",
+          "check": "the reply's quiz offers the three-issue and the two-issue breakdown as labelled options with a cost each and ends asking the user to choose; it does not state which one the run already picked"
+        },
+        {
+          "name": "dry-run-only",
+          "check": "the only publish call carries --dry-run; the stub log has zero issueCreate mutations"
+        }
+      ],
+      "files": [
+        "docs/specs/stations-fases.md"
       ]
     }
   ]

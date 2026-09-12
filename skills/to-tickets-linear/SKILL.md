@@ -85,7 +85,15 @@ Spike, no una historia.
 </vertical-slice-rules>
 
 Un grupo que solo prepara a otro no es rebanada: se fusiona o pasa a ser la
-primera subtarea del que sirve. Una migración es subtarea del trabajo que
+primera subtarea del que sirve. **Un commit o una fase del plan tampoco es
+automáticamente un issue.** Un plan que llega en fases ("1 refactor, 2
+comando, 3 tests y README") describe un orden de trabajo, no un desglose:
+cuenta las rebanadas por lo que se demuestra solo. Una fase de tests o
+documentación de otra fase es subtarea de esa rebanada o parte de sus
+criterios de aceptación, nunca un issue aparte; el refactor previo es
+rebanada solo si entrega algo verificable (tests propios, salida idéntica).
+Medido el 2026-09-11: un plan de tres commits salió como tres issues, y el
+tercero (tests + README) era la capa final del segundo. Una migración es subtarea del trabajo que
 habilita, salvo que entregue algo verificable por sí sola. Los refactors
 anchos se secuencian expand → migrate por lotes → contract, cada lote
 bloqueado por el expand y el contract por todos los lotes.
@@ -132,6 +140,13 @@ completa de uno para que apruebe el contrato, no solo los títulos.
 
 Pregunta: ¿granularidad? ¿bloqueos reales o solo un orden que habrías
 elegido igual? ¿fusionar o partir? ¿etiquetas o prioridad?
+
+**Cada pregunta va abierta, con la alternativa concreta y su coste, y sin
+tu respuesta debajo.** "¿Fusionar 3 en 2? Lo dejé separado porque…" es un
+trámite: ya está contestada, y "publica" es la única salida cómoda. La forma
+útil es "A: tres issues (un commit cada uno, tres cierres en Linear). B: dos
+issues, con tests y README como subtarea del segundo. ¿A o B?". Si el
+usuario no elige, la corrida no sigue.
 
 Itera hasta aprobación. Nada llega a Linear antes.
 
