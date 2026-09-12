@@ -1,0 +1,11 @@
+{
+  "channel_id": "b3cd436b-3ec9-4709-b13d-b2dc6c3ce88e",
+  "root_event_id": "71d758801960aab708f2c42080588206b58127be0becf328cbc9e112c0a88718",
+  "slug": "stations-check-gpt",
+  "mode": "plan",
+  "brief": "PLANS/stations-check-gpt/brief.md",
+  "brief_source": "/Users/andrulli/personal/claude-toolkit/jarviis/docs/specs/stations-check-proveedores-y-review.md",
+  "started_at": 1789226191,
+  "agent_pubkey": "647ffdc477d3ee71ce88d9a0bd4f867a6c63a15c9ec90be74168729a1628edfc",
+  "answered_by": "Claude Terminal"
+}
