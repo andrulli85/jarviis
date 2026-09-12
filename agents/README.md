@@ -29,8 +29,14 @@ Lo demás aprendido ese día: un cambio en Edit Agent exige **Save changes, reab
 confirmar que persistió, y reiniciar el agente**. `buzz agents draft-update` solo prellena
 el formulario si lo envía el dueño de los agentes; desde otra identidad el relay lo acepta
 pero Desktop no lo muestra. Tras reiniciar la app, las menciones de los dos primeros minutos
-se pierden. **Respond to** decide a quién contesta cada agente: con *Only me* ignora a las
-demás identidades, incluida la terminal, sin aviso.
+se pierden. **Respond to** decide a quién contesta cada agente y falla en silencio: con *Only me* ignora
+a las demás identidades; con *Selected people* ignora a todo el que no esté en la lista.
+Para que la terminal pueda lanzar pruebas, su identidad (`68d8a24b…cb96`, Claude Terminal)
+tiene que estar en la lista de cada agente.
+
+Estado al cierre del 2026-09-11: Honey y Pollen responden con el prompt de su archivo y con
+Edit Agent vacío. Fizz, con la misma configuración declarada, no respondió a la ronda final;
+pendiente comparar su Edit Agent con el de Pollen campo a campo.
 
 Última revisión: 2026-09-11.
 
