@@ -11,7 +11,7 @@
    No ejecuta ninguna estación ni escribe nada. Imprime. */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { status as providersStatus } from "../../../providers/index.mjs";
@@ -72,20 +72,37 @@ export function slugify(text, max = 5) {
 
    Tercer estado: la skill está en skills/ de la fábrica pero no enlazada en
    ninguno de esos sitios. No es invocable, así que no "existe", pero
-   tampoco hay que construirla: hay que enlazarla, y se dice cómo. */
+   tampoco hay que construirla: hay que enlazarla, y se dice cómo.
+
+   Cuarto: la fábrica la tiene y la personal existe, pero su ruta real cae
+   fuera de la fábrica (un enlace a otra copia, o una copia suelta). Es
+   invocable, así que no bloquea, pero no es la que se mantiene aquí: se da
+   el `ln -sfn` que la reapunta. */
 export const FACTORY_SKILLS = join(here, "..", "..");
 export function findSkill(name, { skillsDir, pluginsDir, cwd, factoryDir = FACTORY_SKILLS }) {
   const personal = join(skillsDir, name, "SKILL.md");
-  if (existsSync(personal)) return { status: "existe", where: personal };
+  const factory = join(factoryDir, name, "SKILL.md");
+  if (existsSync(personal)) {
+    if (existsSync(factory) && !insideFactory(personal, factoryDir)) {
+      return { status: "otra copia", where: realpathSync(personal), link: `ln -sfn ${join(factoryDir, name)} ${join(skillsDir, name)}` };
+    }
+    return { status: "existe", where: personal };
+  }
   if (cwd) {
     const project = join(cwd, ".claude", "skills", name, "SKILL.md");
     if (existsSync(project)) return { status: "existe", where: project };
   }
   const hit = walk(pluginsDir, name, 8);
   if (hit) return { status: "existe", where: hit };
-  const factory = join(factoryDir, name, "SKILL.md");
   if (existsSync(factory)) return { status: "sin enlazar", where: factory, link: `ln -s ${join(factoryDir, name)} ${join(skillsDir, name)}` };
   return { status: "por construir", where: null };
+}
+
+/* Rutas reales a ambos lados y `relative`, no `startsWith`: /a/jarviis
+   aceptaría /a/jarviis-old/... como propio. */
+function insideFactory(file, factoryDir) {
+  const rel = relative(realpathSync(factoryDir), realpathSync(file));
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 }
 
 function walk(dir, name, depth) {
@@ -109,7 +126,9 @@ function providerFor(spec, providers) {
   if (spec.opposite === "author") {
     const author = providers.author?.family || null;
     out.opposite = author;
-    if (!author) return { ...out, available: false, why: "no sé quién escribió el cambio (CE_REVIEW_AUTHOR)" };
+    /* Sin autor no hay opuesto que elegir: `null` (no "no disponible") y
+       los dos canales, para que quien lea decida con qué familia revisar. */
+    if (!author) return { ...out, available: null, channels: { claude: providers.claude || null, codex: providers.codex || null }, why: "no sé quién escribió el cambio (CE_REVIEW_AUTHOR)" };
     const channel = { claude: "codex", gpt: "claude" }[author];
     if (!channel) return { ...out, available: false, why: `no hay familia opuesta registrada a "${author}"; conozco claude y gpt` };
     out.channel = channel;
@@ -121,6 +140,22 @@ function providerFor(spec, providers) {
   out.available = Boolean(out.channel);
   if (!out.available) out.why = "no hay binario de claude ni de codex";
   return out;
+}
+
+/* ------------------------------------------------------- stationStatus --- */
+
+/* Estado de una estación en esta máquina: sus skills, su proveedor y el
+   agregado. `command` y `manual` salen con las plantillas (<spec>, <key>)
+   sin rellenar: eso depende de la entrada, no de la máquina. Una sola copia
+   de la regla, para que el wayfinder y `stations.mjs` no diverjan. */
+export function stationStatus(s, w) {
+  const skills = s.skills.map((name) => ({ name, ...findSkill(name, w) }));
+  const provider = providerFor(s.provider, w.providers);
+  const status = skills.some((k) => k.status === "por construir") ? "por construir"
+    : skills.some((k) => k.status === "sin enlazar") ? "sin enlazar"
+    : skills.some((k) => k.status === "otra copia") ? "otra copia"
+    : s.manual ? "manual" : "existe";
+  return { n: s.n, id: s.id, name: s.name, in: s.in, out: s.out, skills, manual: s.manual, provider, status, command: s.command };
 }
 
 /* ---------------------------------------------------------- buildRoute --- */
@@ -168,14 +203,10 @@ export function buildRoute(input, world = {}) {
   if (!w.linearPrefix && (c.kind === "idea" || c.kind === "spec")) questions.push("¿qué prefijo de proyecto Linear usa este producto? (JARVIIS_LINEAR_PREFIX)");
 
   const from = STATIONS.findIndex((s) => s.id === entry);
+  const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
   const stations = STATIONS.slice(from).map((s) => {
-    const skills = s.skills.map((name) => ({ name, ...findSkill(name, w) }));
-    const provider = providerFor(s.provider, w.providers);
-    const status = skills.some((k) => k.status === "por construir") ? "por construir"
-      : skills.some((k) => k.status === "sin enlazar") ? "sin enlazar"
-      : s.manual ? "manual" : "existe";
-    const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
-    return { n: s.n, id: s.id, name: s.name, in: s.in, out: s.out, skills, manual: fill(s.manual), provider, status, command: fill(s.command) };
+    const st = stationStatus(s, w);
+    return { ...st, manual: fill(st.manual), command: fill(st.command) };
   });
   const first = stations[0];
   const next = { station: first.id, name: first.name, command: first.command, status: first.status, manual: first.manual };
@@ -184,17 +215,21 @@ export function buildRoute(input, world = {}) {
 
 /* ------------------------------------------------------------- render --- */
 
+/* Una fila de la tabla de estaciones, a partir de lo que devuelve
+   stationStatus. Compartida con stations.mjs para que el formato no diverja. */
+export function stationRow(s) {
+  const skills = s.skills.map((k) => `\`${k.name}\`${k.status === "existe" ? "" : ` (${k.status})`}`).join(", ");
+  const prov = s.provider ? (s.provider.available ? ` · proveedor: ${s.provider.channel}` : ` · **proveedor no disponible**: ${s.provider.why}`) : "";
+  return `| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${prov} |`;
+}
+
 export function renderMarkdown(r) {
   if (r.kind === "invalid") return `**Sin ruta**: ${r.why}\n`;
   const lines = [];
   lines.push(`# Ruta: ${r.key || r.spec || r.input}`, "");
   lines.push(`Entrada: **${r.kind}** → entra por **${r.next.name}**. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
   lines.push("| # | Estación | Entrada → Salida | Skills | Estado |", "|---|---|---|---|---|");
-  for (const s of r.stations) {
-    const skills = s.skills.map((k) => `\`${k.name}\`${k.status === "existe" ? "" : ` (${k.status})`}`).join(", ");
-    const prov = s.provider ? (s.provider.available ? ` · proveedor: ${s.provider.channel}` : ` · **proveedor no disponible**: ${s.provider.why}`) : "";
-    lines.push(`| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${prov} |`);
-  }
+  for (const s of r.stations) lines.push(stationRow(s));
   lines.push("");
   if (r.questions.length) { lines.push("## Preguntas abiertas", ""); for (const q of r.questions) lines.push(`- ${q}`); lines.push(""); }
   lines.push("## Siguiente paso", "");
@@ -206,6 +241,12 @@ export function renderMarkdown(r) {
   } else {
     if (r.next.manual) lines.push(`Manual primero: ${r.next.manual}.`, "");
     lines.push(`\`${r.next.command}\``);
+    /* Otra copia no bloquea: la skill responde, pero no es la que la fábrica
+       mantiene. Se da el arreglo después del comando. */
+    if (r.next.status === "otra copia") {
+      lines.push("", `Ojo: skill en otra copia, no en la fábrica. Reapunta y reinicia la sesión:`, "");
+      for (const k of r.stations[0].skills.filter((k) => k.status === "otra copia")) lines.push(`\`${k.link}\``);
+    }
   }
   lines.push("");
   return lines.join("\n");
