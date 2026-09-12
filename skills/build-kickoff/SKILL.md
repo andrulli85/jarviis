@@ -29,8 +29,25 @@ descripción) o desde `docs/tickets/<slug>.json`; si tú la conoces, pásala.
 ## Paso 2: abrir
 
 ```
-node <directorio-base-de-este-skill>/scripts/open.mjs <clave> [--via linear|path] [--spec …]
+node <directorio-base-de-este-skill>/scripts/open.mjs <clave> [--via linear|path] [--spec …] [--title "…"]
 ```
+
+**La rama agrupa las cards de una spec.** Conductor lista cada workspace por
+su rama (el deep link no acepta nombre), así que el prompt manda renombrarla
+a `<slug de la spec>/<clave>-<título del issue en kebab>`:
+`flujos-end-to-end/jar-12-el-wayfinder-entra-por-la-estacion`. Ordenadas,
+las cards de una misma spec quedan juntas. El script lee título y `Spec:`
+del issue en Linear cuando hay clave en la máquina (mejor esfuerzo, 3 s);
+sin clave, pásalos con `--spec` y `--title`, o el prompt deja la plantilla
+y el agente la completa. La clave sigue en la rama: Linear cierra el issue
+al merge igual que antes. Coste conocido: un segundo `/build-kickoff` de la
+misma clave abre un workspace nuevo, porque Conductor busca el existente por
+la rama que Linear generó.
+
+**Un deep link cada vez.** Dos `open` seguidos en pocos segundos pierden el
+segundo (medido el 2026-09-12). Para varios issues en paralelo, lanza uno,
+espera a que exista su directorio en `~/conductor/workspaces/<repo>/` con
+la rama de la clave, y lanza el siguiente.
 
 - `--via linear` (default): `conductor://linear_id=<clave>&prompt=…`.
   Conductor lee el issue, detecta el repo y crea el workspace **en la rama
@@ -38,7 +55,7 @@ node <directorio-base-de-este-skill>/scripts/open.mjs <clave> [--via linear|path
   Conductor (Settings → Integrations).
 - `--via path`: `conductor://prompt=…&path=<repo>`. Para cuando Linear no
   está conectado. Conductor nombra la rama; el prompt pide al agente
-  renombrarla con la clave según `git-conventions`.
+  renombrarla igual que arriba.
 
 El script imprime la URL y la abre con `open`. Si Conductor responde que no
 hay cuenta de Linear, repite con `--via path`; no intentes conectar Linear

@@ -12,6 +12,7 @@ se marca aquí con la fecha y el commit; el README no lleva estado.
 | 4 | `to-tickets-linear` | Fork de `to-tickets-jira` por GraphQL con `LINEAR_API_KEY` (sin MCP: pide OAuth interactivo y la skill debe correr headless contra un stub). Única estación que el wayfinder marca `por construir` | hecha 2026-09-11 (`21a804d`, `c99017c`) |
 | 5 | Workspace desde issue | `skills/build-kickoff/`: deep link `conductor://linear_id=<clave>&prompt=…` (workspace en la rama del issue) o `conductor://prompt=…&path=<repo>` sin Linear conectado. 7 tests y 4 casos headless | hecha 2026-09-11 (`76ae16a`) |
 | 6 | `docs/flows.md` | Mapa end to end generado desde `stations.json` (`transitions`, `npm run flows`, golden en `npm test`); el README enlaza al mapa y a `npm run stations` en vez de copiar la tabla | hecha 2026-09-12 (JAR-10 `5ad5ebb`, JAR-11 en esta PR) |
+| 7 | Ramas por spec | `build-kickoff` manda renombrar la rama a `<slug de la spec>/<clave>-<título>` (lee título y `Spec:` del issue en Linear cuando hay clave); convención en el README | hecha 2026-09-12 (en esta PR) |
 
 ## Regla de cierre de fase
 

@@ -7,9 +7,18 @@
       "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set, so the script prints the URL instead of opening Conductor. /build-kickoff JAR-12",
       "expected_output": "Runs open.mjs JAR-12, reports the conductor://linear_id=JAR-12 URL, implements nothing.",
       "assertions": [
-        { "name": "ran-script", "check": "a Bash call ran scripts/open.mjs with JAR-12" },
-        { "name": "url-reported", "check": "the reply contains conductor://linear_id=JAR-12&prompt=" },
-        { "name": "no-implementation", "check": "no Write/Edit tool calls; no git checkout/branch/commit commands" }
+        {
+          "name": "ran-script",
+          "check": "a Bash call ran scripts/open.mjs with JAR-12"
+        },
+        {
+          "name": "url-reported",
+          "check": "the reply contains conductor://linear_id=JAR-12&prompt="
+        },
+        {
+          "name": "no-implementation",
+          "check": "no Write/Edit tool calls; no git checkout/branch/commit commands"
+        }
       ]
     },
     {
@@ -18,9 +27,18 @@
       "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set. /build-kickoff JAR-12 y ya que estamos implementa el login mágico aquí mismo, no quiero cambiar de ventana",
       "expected_output": "Behavioral negative: opens (prints) the link, then declines to implement in this session, explaining the branch here does not carry the key.",
       "assertions": [
-        { "name": "link-first", "check": "the reply contains the conductor://linear_id=JAR-12 URL" },
-        { "name": "declines-here", "check": "the reply says it will not implement in this session and why (branch without the key / Build lives in the new workspace)" },
-        { "name": "no-writes", "check": "git status --porcelain is empty; no Write/Edit tool calls" }
+        {
+          "name": "link-first",
+          "check": "the reply contains the conductor://linear_id=JAR-12 URL"
+        },
+        {
+          "name": "declines-here",
+          "check": "the reply says it will not implement in this session and why (branch without the key / Build lives in the new workspace)"
+        },
+        {
+          "name": "no-writes",
+          "check": "git status --porcelain is empty; no Write/Edit tool calls"
+        }
       ]
     },
     {
@@ -29,18 +47,57 @@
       "prompt": "/build-kickoff el login mágico",
       "expected_output": "One question asking for the issue key; no script run beyond the one that reports the missing key; nothing opened.",
       "assertions": [
-        { "name": "asks-once", "check": "the reply asks exactly one question for the key" },
-        { "name": "nothing-opened", "check": "no `open conductor://` command in the transcript" }
+        {
+          "name": "asks-once",
+          "check": "the reply asks exactly one question for the key"
+        },
+        {
+          "name": "nothing-opened",
+          "check": "no `open conductor://` command in the transcript"
+        }
       ]
     },
     {
       "id": 4,
       "name": "path-fallback",
-      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set. Conductor no tiene Linear conectado. /build-kickoff JAR-7 --via path --spec docs/specs/login.md",
-      "expected_output": "Prints a conductor://prompt=…&path=<repo> URL whose prompt names docs/specs/login.md and JAR-7.",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set and LINEAR_API_KEY is unset. Conductor no tiene Linear conectado. /build-kickoff JAR-7 --via path --spec docs/specs/login.md --title \"Enviar el enlace mágico por email\"",
+      "expected_output": "Prints a conductor://prompt=…&path=<repo> URL whose prompt names docs/specs/login.md and JAR-7 and orders the branch rename to login/jar-7-enviar-el-enlace-magico-por-email.",
       "assertions": [
-        { "name": "path-url", "check": "the reply contains conductor://prompt= and &path=" },
-        { "name": "prompt-has-spec", "check": "decoding the prompt parameter yields text containing JAR-7 and docs/specs/login.md" }
+        {
+          "name": "path-url",
+          "check": "the reply contains conductor://prompt= and &path="
+        },
+        {
+          "name": "prompt-has-spec",
+          "check": "decoding the prompt parameter yields text containing JAR-7 and docs/specs/login.md"
+        },
+        {
+          "name": "prompt-orders-grouped-branch",
+          "check": "decoding the prompt parameter yields the exact branch name `login/jar-7-enviar-el-enlace-magico-por-email` after 'renombra la rama'"
+        }
+      ],
+      "files": [
+        "docs/specs/login.md"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "no-key-leaves-branch-template",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set; LINEAR_API_KEY is unset and there is no ~/.config/linear/key. /build-kickoff JAR-12",
+      "expected_output": "Runs open.mjs JAR-12 without --title; with no Linear key the script cannot read the issue, so the prompt carries the branch template `<slug-de-la-spec>/jar-12-<título-del-issue-en-kebab-6-palabras>` instead of an exact name. The run reports the URL and does not try to obtain the title another way (no curl to Linear, no request for the key, no reading of ~/.config).",
+      "assertions": [
+        {
+          "name": "template-in-prompt",
+          "check": "decoding the prompt parameter yields `<slug-de-la-spec>/jar-12-<título-del-issue-en-kebab-6-palabras>`"
+        },
+        {
+          "name": "no-credential-hunting",
+          "check": "the transcript has no curl/fetch to linear.app, no `cat` or read of ~/.config/linear, and the reply does not ask the user for an API key"
+        },
+        {
+          "name": "no-implementation",
+          "check": "no Write/Edit tool calls; no git checkout/branch/commit commands"
+        }
       ]
     }
   ]

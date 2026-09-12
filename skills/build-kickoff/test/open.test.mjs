@@ -5,7 +5,7 @@ import { mkdtempSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { deepLink, kickoffPrompt, repoRoot, parseKey } from "../scripts/open.mjs";
+import { deepLink, kickoffPrompt, repoRoot, parseKey, branchName, fetchIssue } from "../scripts/open.mjs";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "open.mjs");
 
@@ -34,6 +34,42 @@ test("kickoffPrompt: nombra la clave, la spec, tdd, git-conventions y la PR", ()
   assert.match(sinSpec, /Spec:/, "sin ruta conocida, dice dónde buscarla");
 });
 
+test("branchName: <slug de la spec>/<clave>-<título en kebab>; sin spec no hay grupo; sin título, solo la clave", () => {
+  assert.equal(branchName({ key: "JAR-12", spec: "docs/specs/flujos-end-to-end.md", title: "El wayfinder entra por la estación que dicta el estado del issue en Linear" }),
+    "flujos-end-to-end/jar-12-el-wayfinder-entra-por-la-estacion");
+  assert.equal(branchName({ key: "JAR-12", title: "Login mágico" }), "jar-12-login-magico");
+  assert.equal(branchName({ key: "JAR-12", spec: "docs/specs/login-magico.md" }), "login-magico/jar-12");
+  assert.equal(branchName({ key: "jar-12", spec: "login-magico.md", title: "  Ñandú & co  " }), "login-magico/jar-12-nandu-co", "sin ruta, sin acentos, sin símbolos");
+});
+
+test("kickoffPrompt: con título manda el nombre exacto de la rama; sin él, la plantilla", () => {
+  const exact = kickoffPrompt({ key: "JAR-12", spec: "docs/specs/login-magico.md", title: "Enviar el enlace mágico por email" });
+  assert.match(exact, /renombra la rama a exactamente `login-magico\/jar-12-enviar-el-enlace-magico-por-email`/);
+  const tpl = kickoffPrompt({ key: "JAR-12", spec: "docs/specs/login-magico.md" });
+  assert.match(tpl, /`login-magico\/jar-12-<título-del-issue-en-kebab-6-palabras>`/);
+  const nada = kickoffPrompt({ key: "JAR-12" });
+  assert.match(nada, /`<slug-de-la-spec>\/jar-12-<título-del-issue-en-kebab-6-palabras>`/);
+});
+
+test("fetchIssue: sin clave devuelve {} sin llamar; con clave lee título y la línea Spec:; error o issue ausente devuelven {}", async () => {
+  let calls = 0;
+  const noKey = { LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent", HOME: "/nonexistent" };
+  assert.deepEqual(await fetchIssue("JAR-12", { env: noKey, fetchFn: async () => { calls++; return {}; } }), {});
+  assert.equal(calls, 0, "sin clave no toca la red");
+  const env = { LINEAR_API_KEY: "lin_fake", JARVIIS_LINEAR_URL: "http://127.0.0.1:9/graphql" };
+  const ok = async (url, init) => {
+    calls++;
+    assert.equal(init.headers.Authorization, "lin_fake");
+    assert.match(init.body, /"id":"JAR-12"/);
+    return { json: async () => ({ data: { issue: { title: "Login mágico", description: "## Objetivo\n…\n\nSpec: `docs/specs/login-magico.md`" } } }) };
+  };
+  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: ok }), { title: "Login mágico", spec: "docs/specs/login-magico.md" });
+  const sinSpec = async () => ({ json: async () => ({ data: { issue: { title: "T", description: "sin línea de spec" } } }) });
+  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: sinSpec }), { title: "T", spec: null });
+  assert.deepEqual(await fetchIssue("JAR-99", { env, fetchFn: async () => ({ json: async () => ({ data: { issue: null } }) }) }), {});
+  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: async () => { throw new Error("red"); } }), {});
+});
+
 test("deepLink via linear: linear_id y prompt codificados", () => {
   const url = deepLink({ via: "linear", key: "JAR-12", prompt: "hola ñ & fin" });
   assert.equal(url, "conductor://linear_id=JAR-12&prompt=hola%20%C3%B1%20%26%20fin");
@@ -54,10 +90,17 @@ test("repoRoot: la raíz de Conductor si está, si no la de git, si no null", ()
 });
 
 test("CLI --print imprime la URL y no abre nada; JARVIIS_NO_OPEN también", () => {
-  const out = execFileSync("node", [script, "JAR-12", "--print"], { encoding: "utf8", env: { ...process.env, JARVIIS_NO_OPEN: "" } });
+  const out = execFileSync("node", [script, "JAR-12", "--print"], { encoding: "utf8", env: { ...process.env, JARVIIS_NO_OPEN: "", LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent" } });
   assert.match(out, /^conductor:\/\/linear_id=JAR-12&prompt=/m);
-  const out2 = execFileSync("node", [script, "JAR-12"], { encoding: "utf8", env: { ...process.env, JARVIIS_NO_OPEN: "1" } });
+  const out2 = execFileSync("node", [script, "JAR-12"], { encoding: "utf8", env: { ...process.env, JARVIIS_NO_OPEN: "1", LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent" } });
   assert.match(out2, /^conductor:\/\/linear_id=JAR-12/m);
+});
+
+test("CLI --title y --spec: el prompt de la URL lleva la rama exacta, sin tocar Linear", () => {
+  const out = execFileSync("node", [script, "JAR-7", "--spec", "docs/specs/login-magico.md", "--title", "Enviar el enlace mágico por email", "--print"],
+    { encoding: "utf8", env: { ...process.env, LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent", JARVIIS_LINEAR_URL: "http://127.0.0.1:9/graphql" } });
+  const prompt = decodeURIComponent(out.trim().split("prompt=")[1]);
+  assert.match(prompt, /exactamente `login-magico\/jar-7-enviar-el-enlace-magico-por-email`/);
 });
 
 test("CLI: sin clave sale 2 con motivo; --via path sin repo sale 1", () => {
