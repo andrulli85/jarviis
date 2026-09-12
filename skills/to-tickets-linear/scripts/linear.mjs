@@ -42,14 +42,19 @@ export function apiKey(env = process.env) {
   return null;
 }
 
-async function gql(query, variables, env, { timeoutMs = 30000 } = {}) {
+/* JARVIIS_LINEAR_TIMEOUT_MS sustituye el default de 30 s (publicar puede
+   tardar) pero nunca supera un `timeoutMs` explícito: el de issueState es un
+   techo de la spec, no un default. */
+async function gql(query, variables, env, { timeoutMs } = {}) {
   const key = apiKey(env);
   if (!key) throw new Error("sin clave de Linear: ni LINEAR_API_KEY ni ~/.config/linear/key");
+  const fromEnv = Number(env.JARVIIS_LINEAR_TIMEOUT_MS) || 30000;
+  const ms = timeoutMs ? Math.min(timeoutMs, fromEnv) : fromEnv;
   const r = await fetch(env.JARVIIS_LINEAR_URL || URL_DEFAULT, {
     method: "POST",
     headers: { authorization: key, "content-type": "application/json" },
     body: JSON.stringify({ query, variables }),
-    signal: AbortSignal.timeout(Number(env.JARVIIS_LINEAR_TIMEOUT_MS || timeoutMs)),
+    signal: AbortSignal.timeout(ms),
   });
   const text = await r.text();
   let body; try { body = JSON.parse(text); } catch { body = null; }

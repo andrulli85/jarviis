@@ -739,3 +739,17 @@ test("por defecto, con gh en el PATH el lector es ghPrState en el cwd del mundo;
   assert.deepEqual(sin.questions, ["no pude leer el estado de la PR #13 en GitHub (sin gh); si está mergeada, entra por Ship"]);
   assert.equal(sin.next.command, "/adversarial-review");
 });
+
+/* Hallazgo del review adversarial de la PR #13 (Codex, 2026-09-12): sin
+   prefijo configurado, un issue que Linear sí resolvió recibía además la
+   pregunta de "¿es una clave o un término técnico?", que Linear ya
+   contestó. Un cancelado tenía dos preguntas donde la spec pide una. */
+test("sin prefijo, si Linear resolvió la clave no se pregunta si era una clave: cancelado tiene una sola pregunta y Build ninguna", async () => {
+  const sinPrefijo = (result) => ({ ...linearWorld(result), linearPrefix: null });
+  const r = await buildRoute("JAR-8", sinPrefijo({ type: "canceled", name: "Canceled", pr: null }));
+  assert.deepEqual(r.questions, ["JAR-8 está cancelado en Linear: ¿reabrir o dejarlo?"]);
+  const b = await buildRoute("JAR-8", sinPrefijo({ type: "unstarted", name: "Todo", pr: null }));
+  assert.deepEqual(b.questions, []);
+  const sinLectura = await buildRoute("JAR-8", { ...sinPrefijo(null), issueState: null });
+  assert.ok(sinLectura.questions.some((q) => /técnico/.test(q)), "sin lectura de Linear la duda sigue en pie");
+});
