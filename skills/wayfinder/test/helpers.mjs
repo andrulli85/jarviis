@@ -11,9 +11,9 @@ import { join } from "node:path";
    real no cae en factoryDir). Para una skill enlazada a la fábrica usa
    `linked`; para una enlazada a otra copia, `elsewhere`.
 
-   `issueState: null` siempre: sin lector no hay lectura de Linear, y ningún
-   test hereda la clave real de esta máquina. El que quiera un estado lo
-   inyecta encima. */
+   `issueState: null` y `prState: null` siempre: sin lector no hay lectura
+   de Linear ni de GitHub, y ningún test hereda la clave real ni el `gh` de
+   esta máquina. El que quiera un estado lo inyecta encima. */
 export function fakeWorld({ personal = [], plugin = [], project = [], factory = [], linked = [], elsewhere = [], specs = [], git = true, providers } = {}) {
   const root = mkdtempSync(join(tmpdir(), "wayfinder-"));
   const skillsDir = join(root, "skills"); mkdirSync(skillsDir);
@@ -34,5 +34,5 @@ export function fakeWorld({ personal = [], plugin = [], project = [], factory = 
   if (git) mkdirSync(join(cwd, ".git"));
   for (const s of project) { mkdirSync(join(cwd, ".claude", "skills", s), { recursive: true }); writeFileSync(join(cwd, ".claude", "skills", s, "SKILL.md"), "x"); }
   for (const s of specs) { mkdirSync(join(cwd, "docs", "specs"), { recursive: true }); writeFileSync(join(cwd, "docs", "specs", s), "x"); }
-  return { skillsDir, pluginsDir, cwd, factoryDir, linearPrefix: null, issueState: null, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
+  return { skillsDir, pluginsDir, cwd, factoryDir, linearPrefix: null, issueState: null, prState: null, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
 }

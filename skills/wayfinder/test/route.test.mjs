@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, entryForState, STATIONS } from "../scripts/route.mjs";
+import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, entryForState, ghPrState, STATIONS } from "../scripts/route.mjs";
 import { fakeWorld } from "./helpers.mjs";
 
 /* ------------------------------------------------------------ classify --- */
@@ -367,8 +367,9 @@ test("una PR entra por Review y su path deja <key> visible en Ship; una idea rec
 /* test/golden/*.md es la salida de renderMarkdown ANTES de que el wayfinder
    leyera transitions (capturada el 2026-09-12 con este mismo mundo). La
    salida de hoy es esa más las secciones "Ruta" y "Si te sales del camino"
-   y, para un issue sin lector de Linear, la pregunta abierta "sin clave":
-   quitándolas, tiene que ser idéntica (tabla y último renglón incluidos). */
+   y, para un issue sin lector de Linear o una PR sin lector de GitHub, la
+   pregunta abierta "sin clave" / "sin gh": quitándolas, tiene que ser
+   idéntica (tabla y último renglón incluidos). */
 const TODAS = ["buzz-kickoff", "grilling", "to-tickets-linear", "build-kickoff", "tdd", "git-conventions", "adversarial-review", "code-review", "learnings"];
 const goldenWorld = () => ({ ...fakeWorld({ personal: TODAS }), linearPrefix: "JAR" });
 const golden = (name) => readFileSync(join(here(), "golden", name), "utf8");
@@ -393,10 +394,11 @@ test("golden idea: cinco pasos con la spec rellena y la rama del otro plano", as
   assert.equal(md.trimEnd().split("\n").at(-1), "`/buzz-kickoff docs/specs/login-con-enlace-magico-por.md`");
 });
 
-test("golden PR mergeada: un solo paso y sin sección de ramas", async () => {
+test("golden PR mergeada: un solo paso y sin sección de ramas; sin gh, la pregunta abierta y nada en la cabecera", async () => {
   const md = renderMarkdown(await buildRoute("PR #4 merged", goldenWorld()));
   assert.equal(sinSeccionesNuevas(md), golden("pr-merged.md"));
-  assert.match(md, /## Ruta\n\n1\. Ship \/ Learn — `\/learnings <key>`\n\n## Siguiente paso/);
+  assert.match(md, /## Ruta\n\n1\. Ship \/ Learn — `\/learnings <key>`\n\n## Preguntas abiertas\n\n- no pude leer el estado de la PR #4 en GitHub \(sin gh\); si está mergeada, entra por Ship\n\n## Siguiente paso/);
+  assert.doesNotMatch(md, /está \*\*/, "sin lectura no hay línea de estado");
   assert.doesNotMatch(md, /Si te sales del camino/);
   assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings <key>`");
 });
@@ -560,4 +562,180 @@ test("por defecto, con clave en el entorno, el lector es el cliente real de line
     assert.equal(r.next.command, "/learnings JAR-8");
     assert.deepEqual(stub.state.mutations, [], "el wayfinder no escribe en Linear");
   } finally { await stub.close(); }
+});
+
+/* ------------------------------------------- entryForState con GitHub --- */
+
+/* La segunda fuente de verdad: el estado de la PR que gh devuelve. MERGED es
+   Ship, OPEN (borrador o no) es Review, CLOSED sin merge no tiene ruta. La
+   forma se distingue por `source`, no por el nombre de las claves, para que
+   un estado de Linear con un `state` extra no se lea como GitHub. */
+test("entryForState con la forma GitHub: MERGED es Ship, OPEN es Review (borrador también), CLOSED no tiene ruta", () => {
+  assert.equal(entryForState({ source: "github", state: "MERGED", draft: false }), "ship");
+  assert.equal(entryForState({ source: "github", state: "OPEN", draft: false }), "review");
+  assert.equal(entryForState({ source: "github", state: "OPEN", draft: true }), "review");
+  assert.equal(entryForState({ source: "github", state: "CLOSED", draft: false }), null);
+  assert.equal(entryForState({ source: "linear", type: "completed", name: "Done", pr: null }), "ship", "la forma Linear no cambia");
+});
+
+/* ------------------------------------------------- estado desde GitHub --- */
+
+/* El mismo lector de mentira que el de Linear, con la forma que devuelve
+   ghPrState. La rama trae la clave del issue en minúsculas, como la nombra
+   build-kickoff, para comprobar que <key> se rellena desde ahí. */
+const ghWorld = (result) => ({ ...goldenWorld(), prState: fakeReader(result) });
+const PR_URL_13 = "https://github.com/andrulli85/jarviis/pull/13";
+
+test("PR mergeada en GitHub entra por Ship: la cabecera dice de dónde salió, <key> sale de la rama y termina con /learnings", async () => {
+  const w = ghWorld({ state: "MERGED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-el-wayfinder" });
+  const r = await buildRoute(PR_URL_13, w);
+  assert.deepEqual(w.prState.calls, [PR_URL_13]);
+  assert.equal(r.kind, "pr");
+  assert.equal(r.entry, "ship");
+  assert.equal(r.pr, "13");
+  assert.equal(r.key, "JAR-12");
+  assert.deepEqual(r.stations.map((s) => s.id), ["ship"]);
+  assert.deepEqual(r.path.map((p) => p.command), ["/learnings JAR-12"]);
+  assert.equal(r.next.command, "/learnings JAR-12");
+  assert.deepEqual(r.state, { source: "github", state: "MERGED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-el-wayfinder" });
+  assert.deepEqual(r.questions, []);
+  const md = renderMarkdown(r);
+  assert.match(md, /^PR #13 está \*\*mergeada\*\* en GitHub → entra por \*\*Ship \/ Learn\*\*$/m);
+  assert.ok(md.indexOf("está **mergeada**") < md.indexOf("|---|"), "la línea de estado va antes de la tabla");
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings JAR-12`");
+});
+
+test("PR abierta entra por Review; en borrador lo dice la cabecera; sin clave en la rama, <key> queda visible", async () => {
+  const open = await buildRoute(PR_URL_13, ghWorld({ state: "OPEN", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" }));
+  assert.equal(open.entry, "review");
+  assert.deepEqual(open.path.map((p) => p.command), ["/adversarial-review", "/learnings JAR-12"]);
+  assert.equal(open.next.command, "/adversarial-review");
+  assert.deepEqual(open.questions, []);
+  assert.match(renderMarkdown(open), /^PR #13 está \*\*abierta\*\* en GitHub → entra por \*\*Review\*\*$/m);
+
+  const draft = await buildRoute("PR #7", ghWorld({ state: "OPEN", draft: true, url: null, branch: "fix/typos" }));
+  assert.equal(draft.entry, "review");
+  assert.equal(draft.key, null);
+  assert.deepEqual(draft.state, { source: "github", state: "OPEN", draft: true, url: null, branch: "fix/typos" });
+  assert.deepEqual(draft.path.map((p) => p.command), ["/adversarial-review", "/learnings <key>"], "sin clave en la rama el placeholder sigue visible");
+  assert.match(renderMarkdown(draft), /^PR #7 está \*\*abierta \(borrador\)\*\* en GitHub → entra por \*\*Review\*\*$/m);
+});
+
+test("PR cerrada sin mergear no tiene ruta: next null, una pregunta, y el markdown termina con la pregunta", async () => {
+  const r = await buildRoute(PR_URL_13, ghWorld({ state: "CLOSED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" }));
+  assert.equal(r.entry, null);
+  assert.equal(r.next, null);
+  assert.equal(r.pr, "13");
+  assert.deepEqual([r.stations, r.path, r.branches], [[], [], []]);
+  assert.deepEqual(r.state, { source: "github", state: "CLOSED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" });
+  assert.deepEqual(r.questions, ["la PR #13 está cerrada sin mergear en GitHub: ¿reabrir o descartar?"]);
+  const md = renderMarkdown(r);
+  assert.match(md, /^PR #13 está \*\*cerrada sin mergear\*\* en GitHub → sin ruta$/m);
+  assert.doesNotMatch(md, /\|---\|/, "sin ruta no hay tabla");
+  assert.equal(md.trimEnd().split("\n").at(-1), "la PR #13 está cerrada sin mergear en GitHub: ¿reabrir o descartar?");
+});
+
+test("si el texto dice merged y GitHub dice OPEN, manda GitHub: Review, y la cabecera dice la discrepancia", async () => {
+  const r = await buildRoute(`merged ${PR_URL_13}`, ghWorld({ state: "OPEN", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" }));
+  assert.equal(r.kind, "merged");
+  assert.equal(r.entry, "review");
+  assert.equal(r.next.command, "/adversarial-review");
+  assert.match(renderMarkdown(r), /^PR #13 está \*\*abierta\*\* en GitHub \(dijiste mergeada; GitHub la tiene abierta\) → entra por \*\*Review\*\*$/m);
+  const ok = await buildRoute(`merged ${PR_URL_13}`, ghWorld({ state: "MERGED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" }));
+  assert.match(renderMarkdown(ok), /^PR #13 está \*\*mergeada\*\* en GitHub → entra por \*\*Ship \/ Learn\*\*$/m, "sin discrepancia no hay paréntesis");
+});
+
+test("un lector de GitHub que lanza no rompe la ruta: la palabra del texto decide como hoy, state null y la causa en la pregunta", async () => {
+  for (const [why, re] of [["sin repo GitHub en el cwd", /\(sin repo GitHub en el cwd\)/], ["gh: timeout leyendo la PR", /\(gh: timeout/]]) {
+    const pr = await buildRoute(PR_URL_13, ghWorld(new Error(why)));
+    assert.equal(pr.entry, "review");
+    assert.equal(pr.state, null);
+    assert.equal(pr.key, null);
+    assert.equal(pr.next.command, "/adversarial-review");
+    assert.deepEqual(pr.path.map((p) => p.command), ["/adversarial-review", "/learnings <key>"]);
+    assert.equal(pr.questions.length, 1);
+    assert.match(pr.questions[0], /^no pude leer el estado de la PR #13 en GitHub \(/);
+    assert.match(pr.questions[0], re);
+    assert.match(pr.questions[0], /si está mergeada, entra por Ship$/);
+    const merged = await buildRoute(`${PR_URL_13} merged`, ghWorld(new Error(why)));
+    assert.equal(merged.entry, "ship", "sin lectura la palabra merged cuenta como hoy");
+    assert.equal(merged.next.command, "/learnings <key>");
+  }
+});
+
+test("sin lector de GitHub (sin gh) no se llama a nada: como hoy, state null y la pregunta dice sin gh", async () => {
+  const r = await buildRoute(PR_URL_13, { ...goldenWorld(), prState: null });
+  assert.equal(r.entry, "review");
+  assert.equal(r.state, null);
+  assert.deepEqual(r.questions, ["no pude leer el estado de la PR #13 en GitHub (sin gh); si está mergeada, entra por Ship"]);
+  const md = renderMarkdown(r);
+  assert.doesNotMatch(md, /está \*\*/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/adversarial-review`");
+});
+
+test("idea, spec e issue nunca invocan el lector de GitHub; solo pr y merged, y el de Linear no se toca en una PR", async () => {
+  const gh = fakeReader({ state: "MERGED", draft: false, url: PR_URL_13, branch: "jar-12-x" });
+  const linear = fakeReader({ type: "completed", name: "Done", pr: "merged" });
+  const w = { ...fakeWorld({ specs: ["login.md"] }), prState: gh, issueState: linear };
+  for (const input of ["login con enlace mágico", "docs/specs/login.md", "docs/specs/otra.md", "JAR-12", "implementa JAR-12 ya", ""]) {
+    const r = await buildRoute(input, w);
+    assert.notEqual(r.state?.source, "github", input);
+  }
+  assert.deepEqual(gh.calls, []);
+  await buildRoute("PR #4", w);
+  await buildRoute("JAR-12 en la PR #3 merged", w);
+  await buildRoute("revisa github.com/o/r/pull/9 cuando puedas", w);
+  assert.deepEqual(gh.calls, ["4", "3", "https://github.com/o/r/pull/9"], "el lector recibe la URL normalizada o el número, nunca el texto");
+  assert.deepEqual(linear.calls, ["JAR-12", "JAR-12"], "una PR no lee Linear");
+});
+
+/* ------------------------------------------------------------ ghPrState --- */
+
+/* Un doble de gh: un script en un directorio temporal, al frente del PATH,
+   que anota los argumentos con que lo llamaron y responde lo que se le deja
+   en un archivo. Nada toca la red ni el gh real. */
+function ghDouble({ reply, exit = 0, stderr = "" }) {
+  const dir = mkdtempSync(join(tmpdir(), "gh-double-"));
+  const log = join(dir, "calls.log");
+  writeFileSync(join(dir, "reply"), reply);
+  writeFileSync(join(dir, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\ncat "${join(dir, "reply")}"\n${stderr ? `echo "${stderr}" >&2\n` : ""}exit ${exit}\n`);
+  chmodSync(join(dir, "gh"), 0o755);
+  const env = { ...process.env, PATH: `${dir}:/usr/bin:/bin` };
+  return { env, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
+}
+
+test("ghPrState corre gh pr view con los campos justos y devuelve el estado con la forma del contrato", async () => {
+  const d = ghDouble({ reply: JSON.stringify({ state: "MERGED", isDraft: false, url: PR_URL_13, headRefName: "andresreyesnunez/jar-12-x" }) });
+  assert.deepEqual(await ghPrState(PR_URL_13, { cwd: tmpdir(), env: d.env }), { state: "MERGED", draft: false, url: PR_URL_13, branch: "andresreyesnunez/jar-12-x" });
+  assert.deepEqual(d.calls(), [`pr view ${PR_URL_13} --json state,isDraft,url,headRefName`]);
+  const open = ghDouble({ reply: JSON.stringify({ state: "OPEN", isDraft: true, url: "https://github.com/o/r/pull/4", headRefName: "fix/x" }) });
+  assert.deepEqual(await ghPrState("4", { cwd: tmpdir(), env: open.env }), { state: "OPEN", draft: true, url: "https://github.com/o/r/pull/4", branch: "fix/x" });
+  assert.deepEqual(open.calls(), ["pr view 4 --json state,isDraft,url,headRefName"]);
+});
+
+test("ghPrState lanza con causa legible: sin gh, sin repo GitHub en el cwd, gh con error, salida sin state", async () => {
+  await assert.rejects(ghPrState("4", { cwd: tmpdir(), env: { ...process.env, PATH: mkdtempSync(join(tmpdir(), "empty-path-")) } }), /^Error: sin gh$/);
+  const noRepo = ghDouble({ reply: "", exit: 1, stderr: "none of the git remotes configured for this repository point to a known GitHub host" });
+  await assert.rejects(ghPrState("4", { cwd: tmpdir(), env: noRepo.env }), /^Error: sin repo GitHub en el cwd$/);
+  const notGit = ghDouble({ reply: "", exit: 1, stderr: "fatal: not a git repository (or any of the parent directories): .git" });
+  await assert.rejects(ghPrState("4", { cwd: tmpdir(), env: notGit.env }), /^Error: sin repo GitHub en el cwd$/);
+  const other = ghDouble({ reply: "", exit: 1, stderr: "GraphQL: Could not resolve to a PullRequest with the number of 999. (repository.pullRequest)" });
+  await assert.rejects(ghPrState("999", { cwd: tmpdir(), env: other.env }), /^Error: gh: GraphQL: Could not resolve to a PullRequest with the number of 999/);
+  const html = ghDouble({ reply: "<html>not json</html>" });
+  await assert.rejects(ghPrState("4", { cwd: tmpdir(), env: html.env }), /^Error: respuesta de gh sin state$/);
+  const noState = ghDouble({ reply: JSON.stringify({ isDraft: false }) });
+  await assert.rejects(ghPrState("4", { cwd: tmpdir(), env: noState.env }), /^Error: respuesta de gh sin state$/);
+});
+
+test("por defecto, con gh en el PATH el lector es ghPrState en el cwd del mundo; sin gh en el PATH no hay lector y nada se ejecuta", async () => {
+  const d = ghDouble({ reply: JSON.stringify({ state: "MERGED", isDraft: false, url: PR_URL_13, headRefName: "jar-12-x" }) });
+  const con = await buildRoute(PR_URL_13, { ...goldenWorld(), prState: undefined, env: { ...d.env, JARVIIS_LINEAR_PREFIX: "" } });
+  assert.deepEqual(con.state, { source: "github", state: "MERGED", draft: false, url: PR_URL_13, branch: "jar-12-x" });
+  assert.equal(con.next.command, "/learnings JAR-12");
+  assert.deepEqual(d.calls(), [`pr view ${PR_URL_13} --json state,isDraft,url,headRefName`]);
+
+  const sin = await buildRoute(PR_URL_13, { ...goldenWorld(), prState: undefined, env: { PATH: mkdtempSync(join(tmpdir(), "empty-path-")) } });
+  assert.equal(sin.state, null);
+  assert.deepEqual(sin.questions, ["no pude leer el estado de la PR #13 en GitHub (sin gh); si está mergeada, entra por Ship"]);
+  assert.equal(sin.next.command, "/adversarial-review");
 });
