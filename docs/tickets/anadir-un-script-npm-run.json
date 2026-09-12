@@ -23,7 +23,8 @@
       ],
       "priority": 3,
       "blockedBy": [
-        "refactor"
+        "refactor",
+        "factory-dir"
       ],
       "description": "## Objetivo\nUn comando que imprime la tabla de las cinco estaciones con su estado real en esta máquina, sin necesitar una entrada, para comprobar la instalación de la fábrica de un vistazo y, con `--check`, desde un script.\n\n## Contexto\nDecisiones D2, D4, D5, D6 y supuesto S1 en `docs/grill/npm-run-stations/verdict.md`. Reutiliza `stationStatus` y `stationRow` del issue anterior y `status()` de `providers/index.mjs`.\n\n## Alcance\n- `skills/wayfinder/scripts/stations.mjs` (ESM) importa `{ STATIONS, stationStatus, stationRow }` de `./route.mjs` y `{ status as providersStatus }` de `../../../providers/index.mjs`.\n- `collectStations(world = {})` exportada: mismo `world` inyectable que `buildRoute` (cwd, skillsDir, pluginsDir, providers, factoryDir); devuelve `{ stations, providers, cwd }`.\n- `renderStations(result)` exportada: tabla `| # | Estación | Entrada → Salida | Skills | Estado |` vía `stationRow`, pie `Proveedores: claude <ruta|—> · codex <ruta|—> · openrouter <clave presente|—> · autor <familia|—>`; Review sin autor muestra `opuesta al autor: claude ✓ · codex ✓` (✗ donde falte); lista \"Arreglos\" con los `ln` de las skills en `sin enlazar` / `otra copia`. No contiene \"Siguiente paso\".\n- `failures(result)` exportada: una cadena por skill en `por construir` / `sin enlazar` / `otra copia`, por proveedor con `available === false`, y por familia a `null` en `channels` cuando `available === null`. `manual` no cuenta.\n- `main` con el mismo guard `invokedDirectly` que `route.mjs`; flags `--json`, `--check`, `--cwd DIR`. Exit `--check && failures(result).length ? 1 : 0`.\n- `package.json`: `\"stations\": \"node skills/wayfinder/scripts/stations.mjs\"`.\n\n## Criterios de aceptación\n- `npm run stations` imprime las 5 filas en esta máquina.\n- `npm run stations -- --json | jq '.stations | length'` → `5`.\n- `npm run stations -- --check; echo $?` → `0` con la instalación actual.\n- `npm run stations -- --cwd /tmp` funciona igual que `route.mjs --cwd`.\n- Documentado que con `--check` fallido npm imprime su bloque `npm error` (esperado, D6).\n\n## Dependencias\nBloqueado por el refactor de `route.mjs` (`stationStatus`, `stationRow`, `otra copia`).",
       "subtasks": [],
@@ -44,6 +45,21 @@
       "subtasks": [],
       "key": "JAR-7",
       "url": "https://linear.app/jarviis-app/issue/JAR-7/cubrir-stationsmjs-con-tests-de-fixture-y-documentar-npm-run-stations"
+    },
+    {
+      "ref": "factory-dir",
+      "title": "Resolver FACTORY_SKILLS al checkout principal desde cualquier worktree",
+      "labels": [
+        "Bug"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "refactor"
+      ],
+      "description": "## Objetivo\nQue `factoryDir` (`FACTORY_SKILLS` en `skills/wayfinder/scripts/route.mjs`) apunte al checkout principal del repo aunque el script corra desde un worktree, para que `findSkill` no reporte `otra copia` ni proponga un `ln -sfn` a un directorio que desaparece al cerrar el workspace.\n\n## Contexto\nDetectado al verificar JAR-5 desde un workspace de Conductor (2026-09-12): `~/.claude/skills/*` apuntan a `~/personal/claude-toolkit/jarviis/skills` y `FACTORY_SKILLS` se calcula desde `import.meta.url`, así que en `…/conductor/workspaces/jarviis/<ws>/skills` toda skill enlazada al principal cae fuera de `realpathSync(factoryDir)` y sale como `otra copia` (D3/S3 aplicadas al pie de la letra). Desde el checkout principal la salida es correcta. Sin esto, `npm run stations -- --check` (JAR-6) fallaría en falso justo desde donde más se usa: las sesiones de Build.\n\n`git rev-parse --path-format=absolute --git-common-dir` devuelve `<principal>/.git` desde cualquier worktree y desde el principal; su padre es el checkout principal.\n\n## Alcance\n- `FACTORY_SKILLS`: `<padre de git-common-dir>/skills` cuando `git` responde desde `here`; si falla (sin `.git`, sin `git`), el actual `join(here, \"..\", \"..\")`.\n- Ningún cambio en `findSkill`, `stationStatus` ni en la salida cuando se ejecuta desde el checkout principal.\n- Los `ln -s` / `ln -sfn` que `findSkill` sugiere usan la ruta resuelta, no la del worktree.\n\n## Criterios de aceptación\n- Test nuevo con un repo git temporal y `git worktree add`: importando `FACTORY_SKILLS`/`findSkill` con `factoryDir` por defecto desde el worktree, una skill enlazada al principal es `existe` y el `link` de una `sin enlazar` apunta al principal.\n- Test nuevo: sin `.git` alrededor, `FACTORY_SKILLS` sigue siendo `here/../..`.\n- `npm test` en verde con los tests existentes sin tocar.\n- `node skills/wayfinder/scripts/route.mjs \"una idea\"` desde un workspace de Conductor produce la misma salida que desde `~/personal/claude-toolkit/jarviis`.\n\n## Dependencias\nBloqueado por JAR-5 (introduce `otra copia`). Bloquea a JAR-6 (`--check` se apoya en esto).",
+      "subtasks": [],
+      "key": "JAR-8",
+      "url": "https://linear.app/jarviis-app/issue/JAR-8/resolver-factory-skills-al-checkout-principal-desde-cualquier-worktree"
     }
   ]
 }

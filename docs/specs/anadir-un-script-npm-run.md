@@ -2,7 +2,7 @@
 title: "Script npm run stations que imprime la tabla de estaciones con su estado real"
 status: sliced
 date: 2026-09-11
-issue: [JAR-5, JAR-6, JAR-7]
+issue: [JAR-5, JAR-8, JAR-6, JAR-7]
 grill: docs/grill/npm-run-stations/verdict.md
 ---
 
