@@ -37,6 +37,7 @@ Slice: quiz cruzado en Buzz (Codex Grill ↔ Claude Terminal, 2 rondas) en
 | D10 | La PR de docs que publica borrador y spec no nombra claves (regla ya escrita en `to-tickets-linear`, PR #19) | hoy |
 | D11 | `create` es azúcar sobre `publish` (plan de un issue por el mismo camino); `publish` acepta en `blockedBy` una clave existente como issue externo. Una sola ruta compuesta en el script | quiz cruzado Q1 |
 | D12 | D7 no se cumple hoy: `build-kickoff/scripts/open.mjs` (`fetchIssue`) hace GraphQL propio; pasa a importar `issue` de `linear.mjs`, que devuelve también `title` y `spec`. Criterio: `api.linear.app` solo aparece en `linear.mjs` y su test | quiz cruzado, hallazgo |
+| D13 | El comentario de Slice no lo emite `publish`: es un paso propio, después de `publish.ok:true` **y de mergear la PR de docs** (para que el enlace al veredicto apunte a `main`), reanudable por recibo: el borrador guarda por issue `comment: { id, at }` y el paso solo comenta los que no lo tienen. Slice termina cuando el comentario está puesto. Un duplicado por recibo perdido se acepta (visible, se borra a mano) | quiz cruzado Q2 |
 
 ## Contrato de `linear.mjs`
 
@@ -71,7 +72,9 @@ sin escribir; `move JAR-15 Done` sale 3; `api.linear.app` solo en `linear.mjs` y
   (`create --blocked-by` + comentario en el padre) y al bloquearse, y el tono (D6).
 - `build-kickoff/SKILL.md`: lo mismo, como contrato; evals: el prompt de la URL contiene los tres
   momentos y el comando; negativo: un prompt nunca pide GraphQL a mano.
-- `to-tickets-linear/SKILL.md` paso 6: el comentario de Slice por issue (D5) con `comment`.
+- `to-tickets-linear/SKILL.md` paso 6: el comentario de Slice por issue (D5) con `comment`, tras
+  mergear la PR de docs, con recibo `comment: { id, at }` en el borrador y reanudación por los que
+  falten (D13).
 - `README` de jarviis, contrato de artefactos: fila "Comentarios en la card".
 
 Criterios: `npm test`; evals de `build-kickoff` en verde con el caso nuevo; el prompt generado
