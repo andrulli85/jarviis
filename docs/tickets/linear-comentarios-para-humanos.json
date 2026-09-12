@@ -1,0 +1,30 @@
+{
+  "team": "JAR",
+  "spec": "docs/specs/linear-comentarios-para-humanos.md",
+  "issues": [
+    {
+      "ref": "cli",
+      "title": "Hacer de linear.mjs la única puerta al tablero: comment, create, assign, move y link",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 3,
+      "blockedBy": [],
+      "description": "## Objetivo\nQue todo lo que un skill o un prompt hace en Linear pase por `skills/to-tickets-linear/scripts/linear.mjs`: comentar, crear un issue (con bloqueo y asignación), asignar, mover de estado y enlazar. Hoy asignar, mover y enlazar se hacen con GraphQL a mano en cada sesión.\n\n## Contexto\nD7 y D8 de `docs/specs/linear-comentarios-para-humanos.md`. `linear.mjs` ya tiene `resolve`, `issue` y `publish`, resuelve ids en la corrida, respeta `--dry-run` y se prueba contra `test/stub.mjs`.\n\n## Alcance\n- `comment <clave> <texto | ->` → `commentCreate`; devuelve `{ key, commentId, url }`.\n- `create --team <clave|nombre> --title … --description <texto | -> [--label …] [--priority 0-4] [--blocked-by <clave>…] [--assignee me]`: primer estado `backlog`; con `--blocked-by`, crea la relación; devuelve `{ key, url }`.\n- `assign <clave> [me]`: `assigneeId` = viewer.\n- `move <clave> <nombre de estado>`: resuelve por nombre en el equipo del issue; rechaza categorías `completed`/`canceled` con exit 3 (el cierre lo hace la PR de Build).\n- `link <A> blocks <B>`: `issueRelationCreate`; idempotente si ya existe.\n- `publish`: asigna al viewer en cada create.\n- Todos: JSON en stdout, causa en stderr, `--dry-run` sin escrituras.\n- `test/stub.mjs`: operaciones `commentCreate`, `issueUpdate`, `issueRelationCreate`, `viewer`, `workflowStates`. `test/linear.test.mjs`: por comando, feliz + `--dry-run` sin escrituras; `move` a Done → exit 3; `link` repetido idempotente; `publish` asigna.\n- `SKILL.md` de `to-tickets-linear`: sección \"Comandos del tablero\".\n\n## Criterios de aceptación\n- `npm test` en verde.\n- `node linear.mjs comment JAR-15 \"prueba\" --dry-run` renderiza el payload sin escribir.\n- `node linear.mjs move JAR-15 Done` sale 3 con causa.\n- `node linear.mjs create --team JAR --title \"x\" --description \"y\" --dry-run` muestra `assigneeId` del viewer.\n\n## Dependencias\nNinguna.",
+      "subtasks": []
+    },
+    {
+      "ref": "moments",
+      "title": "Los tres momentos de comentario en las cards: arranque, cambio de plan y cierre, desde build-kickoff y Slice",
+      "labels": [
+        "Improvement"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "cli"
+      ],
+      "description": "## Objetivo\nQue cada card de Linear cuente, en palabras para un humano, lo que Andy necesita para decidir desde el teléfono: qué se va a hacer, qué cambió el plan (issue derivado, bloqueo, decisión) y qué quedó hecho; y que ningún prompt vuelva a pedir GraphQL a mano.\n\n## Contexto\nD1–D6 y D9 de `docs/specs/linear-comentarios-para-humanos.md`; revisión de GPT-5.6 en `docs/grill/linear-comentarios/gpt-review.md` (ADOPTAR CON CAMBIOS). Regla única: se comenta solo si Andy tomaría una decisión distinta al leerlo.\n\n## Alcance\n- `build-kickoff/scripts/open.mjs` (`kickoffPrompt`): el prompt lleva la regla única; arranque (alcance y plan, una línea, sin rama ni workspace) con `linear.mjs move <clave> \"In Progress\"` + `comment`; cambio de plan (decisión, sorpresa, bloqueo: qué, por qué, qué espera) con `comment`; issue derivado: `create --blocked-by` y comentario en el padre \"nació por X, bloquea a Y\"; cierre al abrir la PR: `move <clave> \"In Review\"` + `comment` con resultado en lenguaje de usuario, número de PR y \"se cierra con esta PR\"; tono de Slack, en español. Nunca GraphQL a mano.\n- `build-kickoff/SKILL.md`: los tres momentos como contrato. Evals: el prompt de la URL contiene los tres momentos y `linear.mjs comment`; negativo: el prompt no contiene `curl` ni `graphql`.\n- `to-tickets-linear/SKILL.md` paso 6: al publicar, `comment` en cada issue con el resumen del desglose validado y el enlace al veredicto.\n- `README` de jarviis, contrato de artefactos: fila \"Comentarios en la card\".\n\n## Criterios de aceptación\n- `npm test` y evals de `build-kickoff` en verde con el caso nuevo.\n- `node open.mjs JAR-15 --print` decodificado contiene \"solo si Andy tomaría una decisión distinta\", `linear.mjs comment` y `linear.mjs move`.\n- Ningún SKILL.md ni prompt de la fábrica contiene `api.linear.app` fuera de `linear.mjs`.\n\n## Dependencias\nBloqueado por los comandos de `linear.mjs` (`comment`, `move`, `create`).",
+      "subtasks": []
+    }
+  ]
+}
