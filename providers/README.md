@@ -24,6 +24,21 @@ node providers/bin/ask.mjs --need text --model terra "clasifica esto"
 node providers/bin/ask.mjs --need agent --opposite claude --cwd . "revisa el árbol"
 ```
 
+## Salud
+
+`health(env, { probe, evidenceDir, stateFile, exec, ask, now })` dice si cada
+canal **responde**, no si está instalado: `{ claude, codex, openrouter,
+ignored }` con `{ bin, status: ok|quota|down|unprobed, at?, latency?,
+until?, why? }` por canal. Sin binario, `claude auth status` en rojo o sin
+clave de OpenRouter es `down` en el acto; si pasan, decide la evidencia de
+los últimos 7 días: los JSON de `adversarial-review` (leídos por
+`evidence.mjs`, una sola copia de la regla) y `~/.local/state/jarviis/health.json`.
+Con `probe: true` manda un `pong` a los tres en paralelo (30 s por canal) y
+persiste el resultado. `ask()` escribe la salud del canal en `health.json`
+al terminar cualquier uso real (`stateFile: null` para no hacerlo; los
+tests le pasan `env` con un HOME temporal). Es lo que consume
+`npm run stations`.
+
 ## Resolución
 
 | `need` | canal por defecto | `channel` admitidos | modelo por defecto |
@@ -81,8 +96,9 @@ De `~/.claude/skills/adversarial-review` (2026-08-18 a 2026-09-10):
 
 ## Tests
 
-`npm test`: 43 casos, ningún proveedor real. Binarios falsos en shell,
-OpenRouter contra un servidor HTTP local, clave de mentira.
+`npm test`: ningún proveedor real. Binarios falsos en shell, OpenRouter
+contra un servidor HTTP local, clave de mentira, evidencia y `health.json`
+en directorios temporales, `exec`, `ask` y reloj inyectados.
 
 Smoke real (`ask.mjs --status` y un "pong" por canal) hecho el 2026-09-11:
 `claude` respondió; `codex` correcto pero la cuenta está sin cuota hasta el

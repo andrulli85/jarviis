@@ -27,6 +27,8 @@ que hace falta está en la librería estándar de Node.
 npm test                     # toda la suite: providers, skills y scripts
 node --test 'skills/wayfinder/test/*.test.mjs'   # una sola carpeta
 npm run ask -- --status      # estado de los proveedores en esta máquina
+npm run stations -- --check  # tabla de estaciones; exit 1 si una skill falla o un canal no tiene evidencia reciente de respuesta
+npm run stations -- --probe  # un "pong" real por canal (gasta una llamada por canal) y deja ~/.local/state/jarviis/health.json
 npm run flows                # regenera docs/flows.md desde stations.json; con --check solo comprueba (el golden avisa)
 npm run agents:sync          # genera el nido (~/.buzz/AGENTS.md + puente CLAUDE.md) desde agents/; luego reiniciar el agente
 ```

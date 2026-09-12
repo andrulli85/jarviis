@@ -42,17 +42,35 @@ skill lleva `evals/evals.json` y se regresa con
 
 `npm run stations` imprime la tabla de las cinco estaciones con su estado
 real en esta máquina, sin entrada: qué skills responden y qué proveedores
-hay. `npm run stations -- --json` da lo mismo como JSON y
-`npm run stations -- --check` sale con 1 si hay algo que arreglar, para
-usarlo desde un script (bajo npm ≤ 10 ese exit 1 añade además el bloque
-`npm error` de npm; es lo esperado, no un fallo del comando). Cada estación
-está en uno de cinco estados: `existe` (responde y es la de la fábrica),
-`manual` (la estación existe pero pide un paso a mano; no es fallo),
-`sin enlazar` (está en `skills/` pero no en `~/.claude/skills`),
-`otra copia` (el enlace apunta a otra copia, no a esta fábrica) y
-`por construir` (no está en ningún sitio). Las dos que se arreglan con un
-`ln` salen listadas bajo "Arreglos" con el comando exacto; tras enlazar,
-reinicia la sesión.
+responden. `npm run stations -- --json` da lo mismo como JSON (`providers`
+trae la salud por canal e `ignored`) y `npm run stations -- --check` sale
+con 1 si hay algo que arreglar, para usarlo desde un script (bajo npm ≤ 10
+ese exit 1 añade además el bloque `npm error` de npm; es lo esperado, no un
+fallo del comando). Cada estación está en uno de cinco estados: `existe`
+(responde y es la de la fábrica), `manual` (la estación existe pero pide un
+paso a mano; no es fallo), `sin enlazar` (está en `skills/` pero no en
+`~/.claude/skills`), `otra copia` (el enlace apunta a otra copia, no a esta
+fábrica) y `por construir` (no está en ningún sitio). Las dos que se
+arreglan con un `ln` salen listadas bajo "Arreglos" con el comando exacto;
+tras enlazar, reinicia la sesión.
+
+Los proveedores (`claude`, `codex`, `openrouter`) no están verdes por estar
+instalados sino por haber **respondido en los últimos 7 días**. Cada canal
+está en uno de cuatro estados: `ok` (con la fecha de la última respuesta y
+su latencia), `sin cuota hasta <fecha>` (el proveedor dijo cuándo volver a
+intentar), `down: <porqué>` (sin binario, `claude auth status` en rojo, sin
+clave de OpenRouter, o el último intento falló sin fecha) y `sin sondear`
+(nada en la ventana). La evidencia sale de dos sitios: los JSON que deja
+`adversarial-review` en `~/.claude/adversarial-reviews/` (de cualquier
+repo; los que no parsean, no traen `agent` o tienen fecha futura se
+cuentan como `ignorados`) y `~/.local/state/jarviis/health.json`, donde
+cada uso real por `providers.ask()` deja su resultado al terminar. El más
+reciente manda; en empate gana el fallo. `--check` cuenta como fallo
+`sin cuota`, `down` y `sin sondear`: **la primera vez sale rojo** hasta
+sondear. `npm run stations -- --probe` manda un `pong` a los tres canales
+en paralelo (30 s de techo por canal, una llamada por canal), escribe
+`health.json` y sale 1 si alguno no respondió; sin `--probe` el comando no
+gasta ni escribe nada.
 
 ## Proveedores
 
