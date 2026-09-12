@@ -13,10 +13,11 @@
    No ejecuta ninguna estación ni escribe nada. Imprime. */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import { promisify } from "node:util";
 import { status as providersStatus } from "../../../providers/index.mjs";
 import { apiKey, issueState as linearIssueState } from "../../to-tickets-linear/scripts/linear.mjs";
 
@@ -33,7 +34,7 @@ export const STATIONS = JSON.parse(readFileSync(join(here, "..", "stations.json"
 export const issueRegex = (prefix) => prefix
   ? new RegExp("(?<![\\p{L}\\d])(" + prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "-\\d+)(?![\\p{L}\\d])", "iu")
   : /(?<![\p{L}\d])([A-Z]{2,10}-\d+)(?![\p{L}\d])/u;
-const PR_URL = /github\.com\/[^\s/]+\/[^\s/]+\/pull\/(\d+)/i;
+const PR_URL = /github\.com\/([^\s/]+)\/([^\s/]+)\/pull\/(\d+)/i;
 /* "PR 4", "PR #4", "pull request 4". Un "#4" suelto no: en texto libre es un
    ordinal o una etiqueta más veces que una PR. */
 const PR_REF = /(?<![\p{L}\d])(?:PR|pull request)\s*#?\s*(\d+)(?![\p{L}\d])/iu;
@@ -50,7 +51,7 @@ export function classify(input, { linearPrefix = null } = {}) {
   if (!text) return { kind: "invalid" };
   const url = text.match(PR_URL);
   const ref = url ? null : text.match(PR_REF);
-  const pr = url ? url[1] : ref ? ref[1] : null;
+  const pr = url ? url[3] : ref ? ref[1] : null;
   if (pr) return { kind: MERGED.test(text) ? "merged" : "pr", pr };
   const issue = text.match(issueRegex(linearPrefix));
   if (issue && !/^docs\//.test(text)) return { kind: "issue", key: issue[1].toUpperCase() };
@@ -225,13 +226,46 @@ export function branches(entry, stations = STATIONS, fill = (t) => t) {
    aunque su PR haya mergeado (reabrirlo es una decisión, no un comando);
    una PR mergeada o un estado completed van a Ship; started con PR abierta
    está en revisión; todo lo demás es Build, que es lo que hacía el
-   wayfinder sin leer Linear. */
+   wayfinder sin leer Linear.
+
+   La forma GitHub (`source: "github"`, el estado de la PR que da gh) es la
+   segunda fuente de verdad: MERGED es Ship, OPEN (borrador o no) es Review,
+   CLOSED sin merge no tiene ruta. Se distingue por `source`, no por las
+   claves, para que un estado de Linear con un campo de más no se lea como
+   GitHub. */
 export function entryForState(state) {
   if (!state) return "build";
+  if (state.source === "github") return { MERGED: "ship", OPEN: "review" }[state.state] ?? null;
   if (state.type === "canceled" || state.type === "duplicate") return null;
   if (state.pr === "merged" || state.type === "completed") return "ship";
   if (state.type === "started" && state.pr === "open") return "review";
   return "build";
+}
+
+/* ----------------------------------------------------------- ghPrState --- */
+
+/* El estado real de una PR según gh: `gh pr view <ref> --json …` en `cwd`,
+   3 s de margen. `ref` es la URL de la PR o su número (que gh resuelve
+   contra el repo del cwd). Devuelve { state: OPEN|MERGED|CLOSED, draft,
+   url, branch } o lanza con una causa legible, que buildRoute pone en la
+   pregunta: sin gh en PATH, sin repo GitHub en el cwd, el mensaje de gh
+   recortado, o una salida que no es el JSON pedido. `execFn` inyectable para
+   el test del doble. */
+const NO_REPO = /not a git repository|no git remotes|none of the git remotes|could not determine|unable to determine base repository/i;
+export async function ghPrState(ref, { cwd = process.cwd(), env = process.env, execFn = promisify(execFile), timeoutMs = 3000 } = {}) {
+  let out;
+  try {
+    out = await execFn("gh", ["pr", "view", String(ref), "--json", "state,isDraft,url,headRefName"], { cwd, env, timeout: timeoutMs, encoding: "utf8" });
+  } catch (e) {
+    if (e.code === "ENOENT") throw new Error("sin gh");
+    if (e.killed) throw new Error(`gh: timeout leyendo la PR ${ref} (${timeoutMs / 1000} s)`);
+    const stderr = String(e.stderr || e.message || "").trim();
+    if (NO_REPO.test(stderr)) throw new Error("sin repo GitHub en el cwd");
+    throw new Error(`gh: ${stderr.split("\n")[0].slice(0, 120)}`);
+  }
+  let body; try { body = JSON.parse(out.stdout); } catch { body = null; }
+  if (!body || typeof body.state !== "string") throw new Error("respuesta de gh sin state");
+  return { state: body.state, draft: Boolean(body.isDraft), url: body.url ?? null, branch: body.headRefName ?? null };
 }
 
 /* ---------------------------------------------------------- buildRoute --- */
@@ -245,10 +279,19 @@ function defaultIssueState(env) {
   return apiKey(env) ? (key) => linearIssueState(key, env) : null;
 }
 
+/* Lo mismo para GitHub: ghPrState si hay un `gh` ejecutable en el PATH del
+   entorno, `null` (se pregunta) si no. Se mira el disco, no se corre
+   `which`: sin gh no se ejecuta nada, ni para comprobar que no está. */
+function defaultPrState(env, cwd) {
+  const inPath = (env.PATH || "").split(":").some((dir) => dir && existsSync(join(dir, "gh")));
+  return inPath ? (ref) => ghPrState(ref, { cwd, env }) : null;
+}
+
 /* world: { cwd, skillsDir, pluginsDir, providers, linearPrefix, issueState,
-   env } — todo inyectable para que los tests no miren la máquina real.
-   `issueState(key)` devuelve el estado del issue en Linear o lanza; es lo
-   único asíncrono y lo único que sale de esta máquina. */
+   prState, env } — todo inyectable para que los tests no miren la máquina
+   real. `issueState(key)` devuelve el estado del issue en Linear o lanza;
+   `prState(ref)` el de la PR en GitHub o lanza. Son lo único asíncrono y lo
+   único que sale de esta máquina. */
 export async function buildRoute(input, world = {}) {
   const env = world.env || process.env;
   const w = {
@@ -261,6 +304,7 @@ export async function buildRoute(input, world = {}) {
        Los tests pasan null para no heredar el JARVIIS_LINEAR_PREFIX real. */
     linearPrefix: world.linearPrefix !== undefined ? world.linearPrefix : (env.JARVIIS_LINEAR_PREFIX || null),
     issueState: world.issueState !== undefined ? world.issueState : defaultIssueState(env),
+    prState: world.prState !== undefined ? world.prState : defaultPrState(env, world.cwd || process.cwd()),
   };
   const text = String(input || "").trim();
   const c = classify(text, { linearPrefix: w.linearPrefix });
@@ -279,6 +323,19 @@ export async function buildRoute(input, world = {}) {
     const read = await readState(w.issueState, key);
     if (read.state) { state = { source: "linear", ...read.state }; entry = entryForState(read.state); }
     else questions.push(`no pude leer el estado de ${key} en Linear (${read.why}); si ya está en revisión o mergeado, entra por Review o Ship`);
+  }
+
+  /* Una PR se lee en GitHub, y la lectura manda sobre la palabra "merged"
+     del texto: si discrepan, se dice. La rama de la PR suele llevar la clave
+     del issue (build-kickoff la nombra así), y de ahí sale el <key> de
+     /learnings; sin lectura, como hoy: la palabra decide y se pregunta. */
+  if (c.kind === "pr" || c.kind === "merged") {
+    const read = await readPrState(w.prState, prRef(text, c.pr));
+    if (read.state) {
+      state = { source: "github", ...read.state };
+      entry = entryForState(state);
+      key = keyFromBranch(read.state.branch, w.linearPrefix);
+    } else questions.push(`no pude leer el estado de la PR #${c.pr} en GitHub (${read.why}); si está mergeada, entra por Ship`);
   }
 
   if (c.kind === "idea") { slug = slugify(text); spec = `docs/specs/${slug}.md`; }
@@ -305,8 +362,9 @@ export async function buildRoute(input, world = {}) {
      decisión del usuario, y el wayfinder no escribe en Linear. Sin ruta,
      sin siguiente comando, y una sola pregunta. */
   if (entry === null) {
-    questions.push(`${key} está ${state.type === "duplicate" ? "duplicado" : "cancelado"} en Linear: ¿reabrir o dejarlo?`);
-    return { kind: c.kind, input: text, key, pr: null, spec, slug, entry, state, stations: [], path: [], branches: [], questions, next: null, cwd: w.cwd };
+    if (state.source === "github") questions.push(`la PR #${c.pr} está cerrada sin mergear en GitHub: ¿reabrir o descartar?`);
+    else questions.push(`${key} está ${state.type === "duplicate" ? "duplicado" : "cancelado"} en Linear: ¿reabrir o dejarlo?`);
+    return { kind: c.kind, input: text, key, pr: c.pr || null, spec, slug, entry, state, stations: [], path: [], branches: [], questions, next: null, cwd: w.cwd };
   }
   /* La tabla son las estaciones del camino feliz, en el orden del recorrido,
      no las que siguen a la entrada por índice. Con la línea lineal de hoy da
@@ -331,6 +389,34 @@ async function readState(reader, key) {
   } catch (e) { return { state: null, why: e.message }; }
 }
 
+/* Igual para la PR: { state } con lo que gh devolvió; { why } sin lector
+   (sin gh en PATH) o si lanzó (sin repo GitHub en el cwd, gh con error). */
+async function readPrState(reader, ref) {
+  if (!reader) return { state: null, why: "sin gh" };
+  try {
+    const s = await reader(ref);
+    return s ? { state: { state: s.state, draft: Boolean(s.draft), url: s.url ?? null, branch: s.branch ?? null } } : { state: null, why: "sin respuesta" };
+  } catch (e) { return { state: null, why: e.message }; }
+}
+
+/* Lo que gh entiende: la URL completa si la entrada la traía (con esquema,
+   aunque el usuario la pegara sin él), y si no el número, que gh resuelve
+   contra el repo del cwd. Nunca el texto libre. */
+function prRef(text, pr) {
+  const url = text.match(PR_URL);
+  return url ? `https://github.com/${url[1]}/${url[2]}/pull/${url[3]}` : pr;
+}
+
+/* La clave del issue que la rama de la PR lleva en el nombre
+   (`andresreyesnunez/jar-12-…` → JAR-12). En una rama la clave va en
+   minúsculas por convención, así que aquí se acepta en cualquier caja aun
+   sin prefijo configurado: un nombre de rama no es texto libre. */
+function keyFromBranch(branch, prefix) {
+  if (!branch) return null;
+  const m = branch.match(prefix ? issueRegex(prefix) : /(?<![\p{L}\d])([a-z]{2,10}-\d+)(?![\p{L}\d])/iu);
+  return m ? m[1].toUpperCase() : null;
+}
+
 /* ------------------------------------------------------------- render --- */
 
 /* Una fila de la tabla de estaciones, a partir de lo que devuelve
@@ -350,9 +436,17 @@ export function stationRow(s, { provider = providerCell } = {}) {
 /* De dónde salió la entrada cuando se leyó Linear: estado por su nombre (el
    que ve el usuario en el tablero) y la PR adjunta si la hay. */
 const PR_WORDS = { merged: "PR mergeada", open: "PR abierta" };
+const GH_WORDS = { MERGED: "mergeada", OPEN: "abierta", CLOSED: "cerrada sin mergear" };
 function stateLine(r) {
+  const to = r.next ? `entra por **${r.next.name}**` : "sin ruta";
+  if (r.state.source === "github") {
+    const word = r.state.state === "OPEN" && r.state.draft ? "abierta (borrador)" : GH_WORDS[r.state.state] || r.state.state;
+    /* El texto decía "merged" y GitHub no: la lectura manda, y se dice. */
+    const said = r.kind === "merged" && r.state.state !== "MERGED" ? ` (dijiste mergeada; GitHub la tiene ${GH_WORDS[r.state.state] || r.state.state})` : "";
+    return `PR #${r.pr} está **${word}** en GitHub${said} → ${to}`;
+  }
   const pr = PR_WORDS[r.state.pr] ? ` (${PR_WORDS[r.state.pr]})` : "";
-  return `${r.key} está **${r.state.name}** en Linear${pr} → ${r.next ? `entra por **${r.next.name}**` : "sin ruta"}`;
+  return `${r.key} está **${r.state.name}** en Linear${pr} → ${to}`;
 }
 
 export function renderMarkdown(r) {

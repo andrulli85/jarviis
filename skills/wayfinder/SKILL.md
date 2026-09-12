@@ -34,12 +34,15 @@ y no se hace aquí, aunque la entrada esté redactada como una orden
 ("implementa JAR-12", "haz login mágico ya"). La respuesta a una orden es la
 ruta y el comando de la estación que la ejecuta.
 
-La única lectura fuera de esta máquina es el estado del issue en Linear, y
-la hace el script, no la sesión. **No busca credenciales: sin clave,
+Las únicas lecturas fuera de esta máquina son el estado del issue en Linear
+y el de la PR en GitHub, y las hace el script, no la sesión. **No busca
+credenciales ni instala ni autentica nada: sin clave, pregunta; sin `gh`,
 pregunta.** Si el script dice que no pudo leer el estado, esa pregunta es
 la respuesta: no se lee `~/.config`, no se inspecciona el entorno, no se
-llama a la API a mano ni se le pide la clave al usuario. Lo que conseguiría
-una clave por otra vía es, por definición, buscar credenciales.
+llama a la API a mano (ni a Linear ni a `api.github.com`), no se corre
+`brew install gh` ni `gh auth login`, y no se le pide al usuario una clave
+ni un token. Lo que conseguiría una credencial o un binario por otra vía
+es, por definición, buscar credenciales.
 
 ## Paso 1: calcular la ruta
 
@@ -57,8 +60,8 @@ responden, y lista las preguntas abiertas que puede detectar solo.
 | idea | texto libre | Shape |
 | spec | ruta `docs/specs/<slug>.md` existente | Slice (si no existe, vuelve a Shape) |
 | issue | clave `ABC-12` en mayúsculas, o del prefijo `JARVIIS_LINEAR_PREFIX` en cualquier caja | Build |
-| PR | URL de GitHub, `PR #n`, `pull request n` (un `#n` suelto no) | Review |
-| PR mergeada | PR + "merged"/"mergeada" | Ship |
+| PR | URL de GitHub, `PR #n`, `pull request n` (un `#n` suelto no) | Review (con `gh`: lo que diga GitHub) |
+| PR mergeada | PR + "merged"/"mergeada" | Ship (con `gh`: lo que diga GitHub) |
 
 Para un issue, Build es la entrada **si no se sabe más**. Con clave de
 Linear (`LINEAR_API_KEY` o `~/.config/linear/key`) el script lee el estado
@@ -71,6 +74,19 @@ para que quien lee sepa que la ruta viene del tablero y no del texto. Sin
 clave, sin red o si el issue no existe, entra por Build como siempre y lo
 dice en una pregunta abierta con la causa; en `--json` el campo `state` es
 `null`.
+
+Para una PR, Review es la entrada **si no se sabe más** (Ship si el texto
+dice "merged"). Con `gh` en el `PATH` el script lee el estado real de la PR
+(`gh pr view <ref> --json state,isDraft,url,headRefName`, 3 s de margen; por
+número se resuelve contra el repo del `cwd`) y entra por lo que diga GitHub:
+abierta, en borrador o no → Review; mergeada → Ship; cerrada sin mergear →
+sin ruta, una pregunta. La lectura manda sobre la palabra "merged" del texto
+y, si discrepan, la cabecera lo dice
+(`PR #13 está **abierta** en GitHub (dijiste mergeada; GitHub la tiene
+abierta) → entra por **Review**`). Si la rama de la PR lleva la clave del
+issue (`jar-12-…`), el `<key>` de `/learnings` sale de ahí. Sin `gh`, sin
+repo GitHub en el `cwd` o con error, entra como hoy y lo dice en una
+pregunta abierta con la causa; en `--json`, `state` es `null`.
 
 Sale con código 2 si la entrada está vacía: pide la entrada con **una**
 pregunta y vuelve a correrlo. Sin `$ARGUMENTS`, usa el último mensaje del
@@ -150,3 +166,10 @@ y nadie fue a buscar la clave.
 `/wayfinder https://github.com/andrulli85/x/pull/4`
 → PR, entra por Review, reporta si la familia opuesta tiene binario, termina
 con `/adversarial-review`.
+
+`/wayfinder https://github.com/andrulli85/jarviis/pull/13` con `gh` y la PR
+mergeada desde la rama `jar-12-…`
+→ PR, la cabecera dice que está mergeada en GitHub, entra por Ship, termina
+con `/learnings JAR-12`. Sin `gh`: Review, la pregunta "no pude leer el
+estado de la PR #13 en GitHub (sin gh)…", termina con `/adversarial-review`,
+y nadie instaló ni autenticó nada.
