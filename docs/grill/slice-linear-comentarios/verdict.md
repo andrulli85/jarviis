@@ -41,14 +41,22 @@ consulta GraphQL propia e importa `issue` desde `linear.mjs`, que expone
 `title` y `spec`; el criterio deja `api.linear.app` solo en ese módulo y su
 test. Es D5 del ledger, decidido por Claude Terminal el 2026-09-12.
 
-Por el tope de dos rondas, las restantes preguntas conservan la recomendación
-vigente de Claude Terminal, como exige el brief:
+D13 resuelve la entrega del comentario de Slice: no es parte de `publish`.
+Cuando `publish.ok:true` y la PR de docs ya está mergeada, el paso propio del
+skill comenta únicamente los issues sin recibo `comment: { id, at }`, guarda
+el resultado junto a la `key` y usa el permalink de `main` al veredicto. La
+duplicación por pérdida del recibo se acepta como excepción visible y de
+borrado manual. Claude Terminal (`68d8a24b`) tomó esta decisión en Q2 el
+2026-09-12.
+
+Por el tope de dos preguntas, las preguntas de `move` y bloqueo conservan la
+recomendación vigente del brief:
 
 | Pregunta | Decisión vigente | Quién la tomó |
 |---|---|---|
-| Q2 | A: `move` rechaza `completed`/`canceled`, con exit 3; la PR de Build cierra. | Claude Terminal `68d8a24b` |
-| Q3 | A: comentar al bloquearse y al retomar; sin temporizador. | Claude Terminal `68d8a24b` |
-| Q4 | A: Claude Terminal comenta en cada issue al publicar, con resumen y enlace al veredicto. | Claude Terminal `68d8a24b` |
+| Q2 del brief | A: `move` rechaza `completed`/`canceled`, con exit 3; la PR de Build cierra. | Claude Terminal `68d8a24b` |
+| Q3 del brief | A: comentar al bloquearse y al retomar; sin temporizador. | Claude Terminal `68d8a24b` |
+| Q4 del brief (respondida como Q2 del grill) | B: paso posterior, recibos por issue y permalink a `main`. | Claude Terminal `68d8a24b` |
 
 ## Consecuencias aceptadas y cambios al borrador
 
@@ -68,18 +76,26 @@ vigente de Claude Terminal, como exige el brief:
    de `build-kickoff`, no solo el prompt generado. Así detecta una llamada
    GraphQL manual aunque reutilice `URL_DEFAULT` de `linear.mjs`.
 5. D4 tiene su copia canónica en
-   `docs/grill/slice-linear-comentarios/verdict.md`. Antes de `publish`, el
-   flujo debe usar el permalink accesible desde Linear, nunca la ruta local
-   `PLANS/`.
+   `docs/grill/slice-linear-comentarios/verdict.md`; solo tras su merge se
+   usa su permalink a `main`. Los recibos `comment: { id, at }` vuelven
+   reanudable el paso sin hacer idempotente la mutación `comment`.
 
 ## Supuestos sin confirmar
 
-- El mecanismo del permalink de la copia canónica es el valor por defecto de
-  D4 y Andy puede vetarlo al validar el paquete.
+- Ninguno. D6 acepta explícitamente el único modo de duplicación conocido:
+  pérdida o reversión del recibo en el borrador.
 
 ## Quién decidió
 
-- Q1, D11 y D12: Claude Terminal `68d8a24b`.
-- Q2–Q4: recomendaciones vigentes de Claude Terminal `68d8a24b`, no
-  interrogadas por el tope del brief.
+- Q1, D11, D12 y D13: Claude Terminal `68d8a24b`.
+- Q2–Q3 del brief: recomendaciones vigentes de Claude Terminal `68d8a24b`,
+  no interrogadas por el tope.
 - Validación final del paquete: Andy, mediante un mensaje con `✅`.
+
+## Entrega antes de validar
+
+La decisión D13 todavía debe trasladarse al borrador y a la spec; la búsqueda
+al cerrar este ADR no la encontró. También hay que sincronizar la copia
+enlazada `docs/grill/slice-linear-comentarios/verdict.md`, que conserva el
+cierre prematuro sin D12/D13. Claude Terminal es el dueño de ambas
+actualizaciones documentales. La decisión no queda abierta.
