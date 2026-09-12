@@ -1,5 +1,5 @@
 {
-  "_": "Única fuente de la línea de producción. El wayfinder la lee; README.md la copia como documentación. Al añadir una estación o cambiar una skill, se edita aquí.",
+  "_": "Única fuente de la línea de producción: estaciones y transiciones. El wayfinder lee las estaciones; `npm run flows` genera docs/flows.md de las transiciones; README.md copia la tabla como documentación. Al añadir una estación, cambiar una skill o añadir una rama, se edita aquí. `transitions`: [{ to, when?, command, skill? }]; sin `when` es el camino feliz; `to` es un id de estación, \"end\" (sale de la línea) u \"outside\" (no aterriza). Las entradas directas siguen en `entry`.",
   "stations": [
     {
       "n": 1,
@@ -16,7 +16,19 @@
       ],
       "command": "/buzz-kickoff <spec>",
       "manual": null,
-      "provider": null
+      "provider": null,
+      "transitions": [
+        {
+          "to": "slice",
+          "command": "/to-tickets-linear <spec>"
+        },
+        {
+          "to": "outside",
+          "when": "la historia es del plano de trabajo (tracker corporativo, ~/work/, nombres de empresa)",
+          "command": "/buzz-kickoff <spec> (los artefactos quedan en el agente y se aterrizan desde el otro plano)",
+          "skill": "buzz-kickoff"
+        }
+      ]
     },
     {
       "n": 2,
@@ -32,7 +44,13 @@
       ],
       "command": "/to-tickets-linear <spec>",
       "manual": null,
-      "provider": null
+      "provider": null,
+      "transitions": [
+        {
+          "to": "build",
+          "command": "/build-kickoff <key>"
+        }
+      ]
     },
     {
       "n": 3,
@@ -52,7 +70,25 @@
       "manual": null,
       "provider": {
         "need": "agent"
-      }
+      },
+      "transitions": [
+        {
+          "to": "review",
+          "command": "/adversarial-review"
+        },
+        {
+          "to": "slice",
+          "when": "el issue destapa un bloqueador que no está en el plan",
+          "command": "/to-tickets-linear <equipo> (un issue que bloquea al actual; luego Build sobre el nuevo)",
+          "skill": "to-tickets-linear"
+        },
+        {
+          "to": "review",
+          "when": "una PR cierra varios issues de la misma spec",
+          "command": "gh pr create --base main (Closes <clave> por cada issue, sin rama nueva)",
+          "skill": "build-kickoff"
+        }
+      ]
     },
     {
       "n": 4,
@@ -72,7 +108,19 @@
       "provider": {
         "need": "agent",
         "opposite": "author"
-      }
+      },
+      "transitions": [
+        {
+          "to": "ship",
+          "command": "/learnings <key>"
+        },
+        {
+          "to": "ship",
+          "when": "no hay reviewer de la otra familia (cuota, binario)",
+          "command": "/learnings <key> (con deuda: anotar el rango sin revisar)",
+          "skill": "adversarial-review"
+        }
+      ]
     },
     {
       "n": 5,
@@ -88,7 +136,13 @@
       ],
       "command": "/learnings <key>",
       "manual": null,
-      "provider": null
+      "provider": null,
+      "transitions": [
+        {
+          "to": "end",
+          "command": null
+        }
+      ]
     }
   ]
 }

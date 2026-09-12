@@ -15,7 +15,7 @@ que hace falta está en la librería estándar de Node.
 | Ruta | Qué hay |
 |---|---|
 | `skills/<nombre>/` | Una estación: `SKILL.md`, `scripts/`, `test/`, `evals/evals.json`. Se enlaza a `~/.claude/skills/<nombre>` |
-| `skills/wayfinder/stations.json` | Única fuente de la tabla de estaciones |
+| `skills/wayfinder/stations.json` | Única fuente de la tabla de estaciones y de sus transiciones (`docs/flows.md` se genera de ahí) |
 | `providers/` | Resolvedor de canal y modelo (`index.mjs`), canales en `lib/channels/`, CLI en `bin/ask.mjs` |
 | `agents/` | Un archivo por agente de Buzz (frontmatter + instrucciones) y `README.md` con las reglas comunes |
 | `scripts/` | Utilidades del repo que no son una estación (`agents-sync.mjs`) |
@@ -27,6 +27,7 @@ que hace falta está en la librería estándar de Node.
 npm test                     # toda la suite: providers, skills y scripts
 node --test 'skills/wayfinder/test/*.test.mjs'   # una sola carpeta
 npm run ask -- --status      # estado de los proveedores en esta máquina
+npm run flows                # regenera docs/flows.md desde stations.json; con --check solo comprueba (el golden avisa)
 npm run agents:sync          # genera el nido (~/.buzz/AGENTS.md + puente CLAUDE.md) desde agents/; luego reiniciar el agente
 ```
 
