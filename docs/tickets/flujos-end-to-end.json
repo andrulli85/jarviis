@@ -1,0 +1,34 @@
+{
+  "team": "JAR",
+  "spec": "docs/specs/flujos-end-to-end.md",
+  "issues": [
+    {
+      "ref": "flows",
+      "title": "Generar docs/flows.md desde las transiciones de stations.json con npm run flows",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 3,
+      "blockedBy": [],
+      "description": "## Objetivo\nUn mapa end to end de la fábrica en `docs/flows.md`: diagrama Mermaid de estaciones y transiciones, tabla de ramas, tabla de entradas y sección \"Recorridos\" con los trabajos reales, generado desde `skills/wayfinder/stations.json` y el frontmatter de `docs/specs/*.md`, con un test golden que avisa cuando el archivo commiteado se queda viejo.\n\n## Contexto\nDecisiones Q1–Q13 en `docs/specs/flujos-end-to-end.md` (grill del 2026-09-12). Hoy nadie responde \"qué estación sigue a cuál y qué pasa cuando algo se sale del camino feliz\"; `npm run stations` da estado de instalación y cada spec da el \"qué se hizo\", pero no hay mapa. `stations.json` es la única fuente de la línea y lo sigue siendo: gana `transitions`.\n\n## Alcance\n- `stations.json`: `transitions: [{ to, when?, command, skill? }]` en las cinco estaciones. Camino feliz sin `when`; las cinco ramas de la spec con `when`; `to` es un `id` de estación, `\"end\"` (Ship sale) u `\"outside\"` (no aterriza). Las entradas directas siguen en `entry`. `_` actualizado.\n- `skills/wayfinder/scripts/flows.mjs` (ESM): `collectFlows({ stationsPath, specsDir })` → `{ stations, transitions, runs }`; lanza con nombre de estación y `to` si una transición apunta a algo que no existe. `renderFlows(result)` → Markdown: título, `flowchart LR` (nodos = estaciones; camino feliz flecha continua; ramas flecha punteada con el `when` como etiqueta), tabla de ramas (Desde · Cuándo · Adónde · Comando · Skill), tabla de entradas (desde `entry`), sección \"Recorridos\" con una fila por spec con `issue` no nulo (título enlazado, `status`, claves, enlace al grill y a cada learning). `main` con guard `invokedDirectly`; flags `--check` (exit 1 si `docs/flows.md` difiere, sin escribir) y `--out <ruta>` (por defecto `docs/flows.md`).\n- `package.json`: `\"flows\": \"node skills/wayfinder/scripts/flows.mjs\"`.\n- `skills/wayfinder/test/flows.test.mjs`: (a) golden byte a byte contra `docs/flows.md`; (b) fixture de tres estaciones y una rama → tres nodos, una arista continua por camino feliz, una punteada con la etiqueta `when`, una fila en ramas; (c) fixture con dos specs (una `shipped` con `issue`, `grill`, `learnings`; otra con `issue: null`) → \"Recorridos\" con una fila y sus enlaces; (d) `to` inválido → lanza con estación y `to`.\n- `docs/flows.md` generado y commiteado.\n- `route.mjs` y `stations.mjs` ignoran `transitions`: sus tests siguen sin tocar.\n\n## Criterios de aceptación\n- `npm test` en verde (tests nuevos y existentes).\n- `npm run flows -- --check; echo $?` → `0` en la rama.\n- Editar un `when` en `stations.json` sin regenerar → `npm test` en rojo por el golden.\n- `docs/flows.md` renderiza el diagrama en GitHub.\n- `npm run stations` produce la misma salida que antes (Q12).\n\n## Dependencias\nNinguna.",
+      "subtasks": [],
+      "key": "JAR-10",
+      "url": "https://linear.app/jarviis-app/issue/JAR-10/generar-docsflowsmd-desde-las-transiciones-de-stationsjson-con-npm-run"
+    },
+    {
+      "ref": "readme",
+      "title": "Sustituir la tabla de estaciones del README por el enlace a docs/flows.md",
+      "labels": [
+        "Improvement"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "flows"
+      ],
+      "description": "## Objetivo\nQue el README deje de copiar a mano la tabla de `stations.json` y enlace al mapa generado (`docs/flows.md`) y al estado de instalación (`npm run stations`), cerrando la deuda de la copia manual.\n\n## Contexto\nDecisión Q5 en `docs/specs/flujos-end-to-end.md`. La sección \"Línea de producción\" del README reproduce `stations.json` a mano y diverge en el primer cambio; con `docs/flows.md` generado ya no hace falta.\n\n## Alcance\n- README, sección \"Línea de producción\": la tabla de estaciones se sustituye por dos líneas: qué es la línea, enlace a `docs/flows.md` (mapa) y a `npm run stations` (estado). La regla \"cuando la estación gana skill, solo cambia `stations.json`\" se conserva.\n- `docs/plans/fabrica.md`: fila nueva para esta fase, con fecha y commit al cerrar.\n\n## Criterios de aceptación\n- `grep -c '| Shape |' README.md` → `0`.\n- El README enlaza a `docs/flows.md`.\n- `npm test` en verde.\n\n## Dependencias\nBloqueado por `docs/flows.md` (tiene que existir para enlazarlo).",
+      "subtasks": [],
+      "key": "JAR-11",
+      "url": "https://linear.app/jarviis-app/issue/JAR-11/sustituir-la-tabla-de-estaciones-del-readme-por-el-enlace-a"
+    }
+  ]
+}

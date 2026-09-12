@@ -1,8 +1,8 @@
 ---
 title: "docs/flows.md: el mapa end to end de la fábrica, generado desde stations.json"
-status: planned
+status: sliced
 date: 2026-09-12
-issue: null
+issue: [JAR-10, JAR-11]
 grill: null
 ---
 
