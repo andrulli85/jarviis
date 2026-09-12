@@ -75,6 +75,9 @@
           "name": "prompt-orders-grouped-branch",
           "check": "decoding the prompt parameter yields the exact branch name `login/jar-7-enviar-el-enlace-magico-por-email` after 'renombra la rama'"
         }
+      ],
+      "files": [
+        "docs/specs/login.md"
       ]
     },
     {
