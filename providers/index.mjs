@@ -214,13 +214,16 @@ async function detect(channel, env, exec) {
 
 export const HEALTH_WINDOW_MS = 7 * 24 * 3600 * 1000;
 
-/* RFC 3339 con la zona local (2026-09-16T10:24:00-03:00): legible en el
-   pie y comparable en cualquier sitio. */
+/* RFC 3339 con la zona local (2026-09-16T10:24:00.000-03:00): legible en
+   el pie y comparable en cualquier sitio. */
 export function rfc3339(date) {
   const d = date instanceof Date ? date : new Date(date);
   const off = -d.getTimezoneOffset();
   const p = (n) => String(Math.abs(n)).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}${off < 0 ? "-" : "+"}${p(Math.trunc(off / 60))}:${p(off % 60)}`;
+  /* Con milisegundos: dos hechos del mismo segundo (un fallo a las .500 y
+     un pong a las .900) se ordenan por lo que pasó, no por el redondeo. */
+  const ms = String(d.getMilliseconds()).padStart(3, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${ms}${off < 0 ? "-" : "+"}${p(Math.trunc(off / 60))}:${p(off % 60)}`;
 }
 
 /* "try again at Sep 16th, 2026 10:24 AM." → esa fecha en zona local (D9:
@@ -272,16 +275,22 @@ export const PROBE_TIMEOUT_MS = 30000;
 
 /* Un "pong" real por el canal, sin herramientas, con techo de tiempo. El
    `ask` real ya escribe su evidencia (D12); aquí se le pide que no, porque
-   el sondeo la escribe con el mismo `now` que evalúa. */
+   el sondeo la escribe con el mismo `now` que evalúa. `signal` corta la
+   petición cuando vence el techo: dejar de esperar no es lo mismo que colgar. */
 function defaultProbe(env) {
-  return (channel) => ask(resolve({ need: "text", channel }, env), { prompt: "pong", timeoutMs: PROBE_TIMEOUT_MS, idleMs: PROBE_TIMEOUT_MS, env, stateFile: null });
+  return (channel, { signal, timeoutMs } = {}) => ask(resolve({ need: "text", channel }, env), { prompt: "pong", timeoutMs, idleMs: timeoutMs, signal, env, stateFile: null });
 }
 
+/* askFn(channel, { signal, timeoutMs }) → { ok, seconds?, why? }. Al vencer
+   el techo se aborta la señal y se responde por el canal sin esperar. */
 async function probeChannel(channel, askFn, timeoutMs) {
+  const ctl = new AbortController();
   let timer;
-  const clock = new Promise((r) => { timer = setTimeout(() => r({ ok: false, why: `timeout: sin respuesta en ${timeoutMs / 1000} s` }), timeoutMs); });
+  const clock = new Promise((r) => {
+    timer = setTimeout(() => { ctl.abort(); r({ ok: false, why: `timeout: sin respuesta en ${timeoutMs / 1000} s` }); }, timeoutMs);
+  });
   try {
-    const r = await Promise.race([askFn(channel).catch((e) => ({ ok: false, why: e.message })), clock]);
+    const r = await Promise.race([Promise.resolve().then(() => askFn(channel, { signal: ctl.signal, timeoutMs })).catch((e) => ({ ok: false, why: e.message })), clock]);
     return r && r.ok ? { ok: true, seconds: r.seconds ?? null } : { ok: false, why: r?.why || "sin respuesta" };
   } finally { clearTimeout(timer); }
 }

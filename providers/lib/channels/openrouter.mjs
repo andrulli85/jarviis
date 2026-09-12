@@ -46,12 +46,18 @@ export function apiKey(env = process.env) {
 }
 
 export async function ask(resolved, { prompt, system, effort = "high", json = false, maxTokens = MAX_TOKENS,
-  idleMs, env = process.env }) {
+  idleMs, signal, env = process.env }) {
   const key = apiKey(env);
   if (!key) return { text: "", why: "sin clave de OpenRouter: ni OPENROUTER_API_KEY ni ~/.config/openrouter/key" };
   const idle = idleMs ?? Number(env.CE_REVIEW_IDLE_MS || IDLE_LIMIT_DEFAULT);
   const t0 = Date.now();
   const ctl = new AbortController();
+  /* Una señal externa (el techo del sondeo) corta el stream igual que el
+     vigilante de silencio: la conexión se cierra, no queda colgada. */
+  if (signal) {
+    if (signal.aborted) ctl.abort(new Error("abortado antes de conectar"));
+    else signal.addEventListener("abort", () => ctl.abort(new Error("abortado por quien preguntó")), { once: true });
+  }
   let quiet = null;
   const armWatchdog = () => {
     clearTimeout(quiet);

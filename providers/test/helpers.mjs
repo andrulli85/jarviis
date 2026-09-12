@@ -53,7 +53,9 @@ export async function openrouterStub(handler) {
   });
   await new Promise((r) => server.listen(0, "127.0.0.1", r));
   const url = `http://127.0.0.1:${server.address().port}/chat/completions`;
-  return { url, close: () => new Promise((r) => server.close(r)) };
+  /* closeAllConnections primero: un stream que el código bajo prueba dejó
+     abierto no debe colgar la suite, debe hacer fallar su test. */
+  return { url, close: () => { server.closeAllConnections?.(); return new Promise((r) => server.close(r)); } };
 }
 
 export const sse = (obj) => `data: ${JSON.stringify(obj)}\n\n`;

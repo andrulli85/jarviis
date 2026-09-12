@@ -301,3 +301,36 @@ test("probe que no puede persistir: el resultado del pong se devuelve igual, sin
   assert.deepEqual([h.claude.status, h.codex.status, h.openrouter.status], ["ok", "ok", "ok"]);
   assert.equal(h.claude.latency, 0.7);
 });
+
+test("los instantes persistidos conservan milisegundos: un ok a las .900 gana a un fallo a las .500 del mismo segundo", async () => {
+  const w = world();
+  const t = new Date("2026-09-12T11:00:00.500Z");
+  evidence(w.evidenceDir, [[`${stamp(t)}-codex-ko.json`, review("codex", { ok: false, why: "boom", verdict: null })]]);
+  const later = new Date("2026-09-12T11:00:00.900Z");
+  await realAsk(resolve({ need: "text", channel: "codex" }, neutralEnv({ CE_CODEX_BIN: fakeBin("codex", 'while [ $# -gt 0 ]; do case "$1" in -o) OUT="$2"; shift;; esac; shift; done; cat > "$OUT"') })), { prompt: "pong", stateFile: w.stateFile, now: later, env: neutralEnv() });
+  const h = await health(allPresent(), w);
+  assert.equal(h.codex.status, "ok");
+});
+
+import { openrouterStub, delta } from "./helpers.mjs";
+
+test("el timeout del sondeo corta la petición real a OpenRouter, no solo deja de esperarla", async () => {
+  let closed;
+  const gone = new Promise((r) => { closed = r; });
+  const stub = await openrouterStub(async (_, res, req) => {
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    /* Goteo constante sin [DONE]: el vigilante de silencio nunca salta, así
+       que solo la señal del sondeo puede cerrar esta conexión. */
+    const drip = setInterval(() => res.write(delta("o")), 20);
+    res.on("close", () => { clearInterval(drip); closed(Date.now()); });
+  });
+  try {
+    const env = neutralEnv({ CE_OPENROUTER_URL: stub.url, OPENROUTER_API_KEY: "k", CE_CLAUDE_BIN: fakeBin("claude", "cat"), CE_CODEX_BIN: "" });
+    const t0 = Date.now();
+    const h = await health(env, { ...world({ ask: undefined }), probe: true, probeTimeoutMs: 150 });
+    assert.equal(h.openrouter.status, "down");
+    assert.match(h.openrouter.why, /timeout/);
+    const at = await Promise.race([gone, new Promise((r) => setTimeout(() => r(null), 2000))]);
+    assert.ok(at && at - t0 < 1500, "la conexión se cerró al vencer el timeout");
+  } finally { await stub.close(); }
+});
