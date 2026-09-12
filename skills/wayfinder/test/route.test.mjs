@@ -1,9 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classify, slugify, buildRoute, renderMarkdown, STATIONS } from "../scripts/route.mjs";
+import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, STATIONS } from "../scripts/route.mjs";
 
 /* ------------------------------------------------------------ classify --- */
 
@@ -69,10 +69,21 @@ test("slug ASCII, kebab, corto", () => {
 
 /* ---------------------------------------------------------- buildRoute --- */
 
-function fakeWorld({ personal = [], plugin = [], project = [], factory = [], specs = [], git = true, providers } = {}) {
+/* `personal` crea directorios reales en skillsDir, no enlaces: si el mismo
+   nombre va también en `factory`, findSkill lo verá como "otra copia" (su ruta
+   real no cae en factoryDir). Para una skill enlazada a la fábrica usa
+   `linked`; para una enlazada a otra copia, `elsewhere`. */
+function fakeWorld({ personal = [], plugin = [], project = [], factory = [], linked = [], elsewhere = [], specs = [], git = true, providers } = {}) {
   const root = mkdtempSync(join(tmpdir(), "wayfinder-"));
   const skillsDir = join(root, "skills"); mkdirSync(skillsDir);
   for (const s of personal) { mkdirSync(join(skillsDir, s)); writeFileSync(join(skillsDir, s, "SKILL.md"), "x"); }
+  const factoryDir = join(root, "factory"); mkdirSync(factoryDir);
+  for (const s of new Set([...factory, ...linked])) { mkdirSync(join(factoryDir, s)); writeFileSync(join(factoryDir, s, "SKILL.md"), "x"); }
+  for (const s of linked) symlinkSync(join(factoryDir, s), join(skillsDir, s));
+  for (const s of elsewhere) {
+    const d = join(root, "elsewhere", s); mkdirSync(d, { recursive: true }); writeFileSync(join(d, "SKILL.md"), "x");
+    symlinkSync(d, join(skillsDir, s));
+  }
   const pluginsDir = join(root, "plugins");
   for (const s of plugin) {
     const d = join(pluginsDir, "cache", "vendor", "pack", "1.0", "skills", "eng", s);
@@ -81,8 +92,6 @@ function fakeWorld({ personal = [], plugin = [], project = [], factory = [], spe
   const cwd = join(root, "repo"); mkdirSync(cwd);
   if (git) mkdirSync(join(cwd, ".git"));
   for (const s of project) { mkdirSync(join(cwd, ".claude", "skills", s), { recursive: true }); writeFileSync(join(cwd, ".claude", "skills", s, "SKILL.md"), "x"); }
-  const factoryDir = join(root, "factory"); mkdirSync(factoryDir);
-  for (const s of factory) { mkdirSync(join(factoryDir, s)); writeFileSync(join(factoryDir, s, "SKILL.md"), "x"); }
   for (const s of specs) { mkdirSync(join(cwd, "docs", "specs"), { recursive: true }); writeFileSync(join(cwd, "docs", "specs", s), "x"); }
   return { skillsDir, pluginsDir, cwd, factoryDir, linearPrefix: null, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
 }
@@ -196,4 +205,64 @@ test("renderMarkdown lista estaciones con estado y el siguiente comando", () => 
   assert.match(md, /`\/build-kickoff JAR-12`/);
   assert.doesNotMatch(md, /manual/);
   assert.doesNotMatch(md, /Shape/);
+});
+
+/* ------------------------------------------------------- stationStatus --- */
+
+test("stationStatus sobre una estación devuelve la misma forma que buildRoute construye", () => {
+  const w = fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] });
+  const s = stationStatus(STATIONS.find((s) => s.id === "build"), w);
+  assert.deepEqual(Object.keys(s), ["n", "id", "name", "in", "out", "skills", "manual", "provider", "status", "command"]);
+  assert.equal(s.n, 3);
+  assert.equal(s.status, "existe");
+  assert.deepEqual(s.skills.map((k) => k.name), ["build-kickoff", "tdd", "git-conventions"]);
+  assert.equal(s.provider.channel, "claude");
+  assert.equal(s.command, "/build-kickoff <key>", "sin ruta no hay clave que rellenar");
+});
+
+/* ---------------------------------------------------------- otra copia --- */
+
+test("una skill personal que apunta a otra copia distinta de la fábrica es 'otra copia' y da el ln -sfn", () => {
+  const w = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff"], linked: ["git-conventions"], plugin: ["tdd"] });
+  const build = buildRoute("JAR-1", w).stations.find((s) => s.id === "build");
+  const bk = build.skills.find((k) => k.name === "build-kickoff");
+  assert.equal(bk.status, "otra copia");
+  assert.match(bk.where, /elsewhere\/build-kickoff\/SKILL\.md$/, "where es la ruta real, no el enlace");
+  assert.equal(bk.link, `ln -sfn ${join(w.factoryDir, "build-kickoff")} ${join(w.skillsDir, "build-kickoff")}`);
+  assert.equal(build.skills.find((k) => k.name === "git-conventions").status, "existe", "un enlace a la fábrica es existe");
+  assert.equal(build.status, "otra copia");
+});
+
+test("otra copia agrega por debajo de sin enlazar y por encima de manual", () => {
+  const w = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff", "tdd"], linked: ["git-conventions"] });
+  assert.equal(stationStatus(STATIONS.find((s) => s.id === "build"), w).status, "sin enlazar");
+  const w2 = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff"], linked: ["git-conventions"], plugin: ["tdd"] });
+  assert.equal(stationStatus({ ...STATIONS.find((s) => s.id === "build"), manual: "algo" }, w2).status, "otra copia");
+});
+
+test("proveedores: Review sin autor no sabe la familia opuesta y muestra ambos canales", () => {
+  const w = fakeWorld({ providers: { claude: "/b/claude", codex: null, openrouter: null, author: null } });
+  const review = buildRoute("PR #1", w).stations.find((s) => s.id === "review");
+  assert.deepEqual(review.provider, {
+    need: "agent", opposite: null, available: null,
+    channels: { claude: "/b/claude", codex: null },
+    why: "no sé quién escribió el cambio (CE_REVIEW_AUTHOR)",
+  });
+  assert.match(renderMarkdown(buildRoute("PR #1", w)), /\*\*proveedor no disponible\*\*: no sé quién escribió/);
+});
+
+test("renderMarkdown con otra copia en la primera estación da el comando y el ln -sfn sin bloquear", () => {
+  const w = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff"], linked: ["git-conventions"], plugin: ["tdd"] });
+  const md = renderMarkdown(buildRoute("JAR-1", w));
+  assert.match(md, /`build-kickoff` \(otra copia\)/);
+  assert.match(md, /## Siguiente paso\n\n`\/build-kickoff JAR-1`/);
+  assert.match(md, /`ln -sfn .*build-kickoff .*skills\/build-kickoff`/);
+  assert.doesNotMatch(md, /no está enlazada/);
+});
+
+test("stationRow es la fila de la tabla que renderMarkdown imprime", () => {
+  const r = buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] }));
+  const row = stationRow(r.stations[0]);
+  assert.equal(row, "| 3 | Build | issue → workspace de Conductor en la rama del issue → PR que referencia la clave | `build-kickoff`, `tdd`, `git-conventions` | existe · proveedor: claude |");
+  assert.ok(renderMarkdown(r).split("\n").includes(row));
 });
