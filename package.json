@@ -6,7 +6,8 @@
   "description": "Fábrica personal de software: wayfinder, proveedores y estaciones",
   "engines": { "node": ">=20" },
   "scripts": {
-    "test": "node --test 'providers/test/*.test.mjs' 'skills/*/test/*.test.mjs'",
-    "ask": "node providers/bin/ask.mjs"
+    "test": "node --test 'providers/test/*.test.mjs' 'skills/*/test/*.test.mjs' 'scripts/test/*.test.mjs'",
+    "ask": "node providers/bin/ask.mjs",
+    "agents:sync": "node scripts/agents-sync.mjs"
   }
 }
