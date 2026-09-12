@@ -2,7 +2,7 @@
 title: "npm run stations -- --check comprueba que cada proveedor responde y muestra la deuda de Review"
 status: sliced
 date: 2026-09-12
-issue: null
+issue: [JAR-14, JAR-15]
 grill: docs/grill/stations-check-gpt/verdict.md
 ---
 
