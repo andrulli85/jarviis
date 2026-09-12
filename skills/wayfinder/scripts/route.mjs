@@ -18,6 +18,7 @@ import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { status as providersStatus } from "../../../providers/index.mjs";
+import { apiKey, issueState as linearIssueState } from "../../to-tickets-linear/scripts/linear.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const STATIONS = JSON.parse(readFileSync(join(here, "..", "stations.json"), "utf8")).stations;
@@ -216,13 +217,40 @@ export function branches(entry, stations = STATIONS, fill = (t) => t) {
   return (s.transitions || []).filter((t) => t.when).map((t) => ({ when: t.when, to: t.to, command: fill(t.command), skill: t.skill || null }));
 }
 
+/* ------------------------------------------------------- entryForState --- */
+
+/* Por qué estación entra un issue según su estado en Linear: la categoría
+   (`type`, que un admin no edita; el nombre sí) y la PR adjunta. La tabla
+   de la spec, en orden de precedencia: un issue cancelado no tiene ruta
+   aunque su PR haya mergeado (reabrirlo es una decisión, no un comando);
+   una PR mergeada o un estado completed van a Ship; started con PR abierta
+   está en revisión; todo lo demás es Build, que es lo que hacía el
+   wayfinder sin leer Linear. */
+export function entryForState(state) {
+  if (!state) return "build";
+  if (state.type === "canceled" || state.type === "duplicate") return null;
+  if (state.pr === "merged" || state.type === "completed") return "ship";
+  if (state.type === "started" && state.pr === "open") return "review";
+  return "build";
+}
+
 /* ---------------------------------------------------------- buildRoute --- */
 
 const ENTRY_KIND = { idea: "shape", spec: "slice", issue: "build", pr: "review", merged: "ship" };
 
-/* world: { cwd, skillsDir, pluginsDir, providers, linearPrefix } — todo
-   inyectable para que los tests no miren la máquina real. */
-export function buildRoute(input, world = {}) {
+/* El lector de estado por defecto: el cliente real de linear.mjs si hay
+   clave en el entorno, y `null` (no hay lector, se pregunta) si no la hay.
+   Sin clave no se toca nada: ni red ni disco más allá de apiKey. */
+function defaultIssueState(env) {
+  return apiKey(env) ? (key) => linearIssueState(key, env) : null;
+}
+
+/* world: { cwd, skillsDir, pluginsDir, providers, linearPrefix, issueState,
+   env } — todo inyectable para que los tests no miren la máquina real.
+   `issueState(key)` devuelve el estado del issue en Linear o lanza; es lo
+   único asíncrono y lo único que sale de esta máquina. */
+export async function buildRoute(input, world = {}) {
+  const env = world.env || process.env;
   const w = {
     cwd: world.cwd || process.cwd(),
     skillsDir: world.skillsDir || join(homedir(), ".claude", "skills"),
@@ -231,7 +259,8 @@ export function buildRoute(input, world = {}) {
     factoryDir: world.factoryDir || FACTORY_SKILLS,
     /* `undefined` = no dicho, mira el entorno; `null` = dicho que no hay.
        Los tests pasan null para no heredar el JARVIIS_LINEAR_PREFIX real. */
-    linearPrefix: world.linearPrefix !== undefined ? world.linearPrefix : (process.env.JARVIIS_LINEAR_PREFIX || null),
+    linearPrefix: world.linearPrefix !== undefined ? world.linearPrefix : (env.JARVIIS_LINEAR_PREFIX || null),
+    issueState: world.issueState !== undefined ? world.issueState : defaultIssueState(env),
   };
   const text = String(input || "").trim();
   const c = classify(text, { linearPrefix: w.linearPrefix });
@@ -240,6 +269,17 @@ export function buildRoute(input, world = {}) {
   const questions = [];
   let entry = ENTRY_KIND[c.kind];
   let spec = null, key = c.key || null, slug;
+  let state = null;
+
+  /* Solo un issue se lee en Linear: la ruta de un issue depende de su estado
+     real, y es el único punto donde el wayfinder mentía. Sin lectura (sin
+     clave, sin red, no existe) entra por Build como siempre y lo dice en una
+     pregunta, con la causa: es el usuario quien sabe si ya está en revisión. */
+  if (c.kind === "issue") {
+    const read = await readState(w.issueState, key);
+    if (read.state) { state = { source: "linear", ...read.state }; entry = entryForState(read.state); }
+    else questions.push(`no pude leer el estado de ${key} en Linear (${read.why}); si ya está en revisión o mergeado, entra por Review o Ship`);
+  }
 
   if (c.kind === "idea") { slug = slugify(text); spec = `docs/specs/${slug}.md`; }
   else if (c.kind === "spec") {
@@ -261,6 +301,13 @@ export function buildRoute(input, world = {}) {
   if (!w.linearPrefix && (c.kind === "idea" || c.kind === "spec")) questions.push("¿qué prefijo de proyecto Linear usa este producto? (JARVIIS_LINEAR_PREFIX)");
 
   const fill = (t) => t && t.replace("<spec>", spec || "<spec>").replace("<key>", key || "<key>");
+  /* Un issue cancelado o duplicado no tiene estación: reabrirlo es una
+     decisión del usuario, y el wayfinder no escribe en Linear. Sin ruta,
+     sin siguiente comando, y una sola pregunta. */
+  if (entry === null) {
+    questions.push(`${key} está ${state.type === "duplicate" ? "duplicado" : "cancelado"} en Linear: ¿reabrir o dejarlo?`);
+    return { kind: c.kind, input: text, key, pr: null, spec, slug, entry, state, stations: [], path: [], branches: [], questions, next: null, cwd: w.cwd };
+  }
   /* La tabla son las estaciones del camino feliz, en el orden del recorrido,
      no las que siguen a la entrada por índice. Con la línea lineal de hoy da
      lo mismo; con una rama en el camino feliz, no. */
@@ -271,7 +318,17 @@ export function buildRoute(input, world = {}) {
   });
   const first = stations[0];
   const next = { station: first.id, name: first.name, command: first.command, status: first.status, manual: first.manual };
-  return { kind: c.kind, input: text, key, pr: c.pr || null, spec, slug, entry, stations, path: route, branches: branches(entry, STATIONS, fill), questions, next, cwd: w.cwd };
+  return { kind: c.kind, input: text, key, pr: c.pr || null, spec, slug, entry, state, stations, path: route, branches: branches(entry, STATIONS, fill), questions, next, cwd: w.cwd };
+}
+
+/* { state } si el lector respondió; { why } si no hay lector (sin clave) o
+   lanzó (su mensaje es la causa: sin red, no existe). */
+async function readState(reader, key) {
+  if (!reader) return { state: null, why: "sin clave" };
+  try {
+    const s = await reader(key);
+    return s ? { state: { type: s.type, name: s.name, pr: s.pr ?? null } } : { state: null, why: "sin respuesta" };
+  } catch (e) { return { state: null, why: e.message }; }
 }
 
 /* ------------------------------------------------------------- render --- */
@@ -290,11 +347,23 @@ export function stationRow(s, { provider = providerCell } = {}) {
   return `| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${provider(s.provider)} |`;
 }
 
+/* De dónde salió la entrada cuando se leyó Linear: estado por su nombre (el
+   que ve el usuario en el tablero) y la PR adjunta si la hay. */
+const PR_WORDS = { merged: "PR mergeada", open: "PR abierta" };
+function stateLine(r) {
+  const pr = PR_WORDS[r.state.pr] ? ` (${PR_WORDS[r.state.pr]})` : "";
+  return `${r.key} está **${r.state.name}** en Linear${pr} → ${r.next ? `entra por **${r.next.name}**` : "sin ruta"}`;
+}
+
 export function renderMarkdown(r) {
   if (r.kind === "invalid") return `**Sin ruta**: ${r.why}\n`;
   const lines = [];
   lines.push(`# Ruta: ${r.key || r.spec || r.input}`, "");
-  lines.push(`Entrada: **${r.kind}** → entra por **${r.next.name}**. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
+  lines.push(`Entrada: **${r.kind}** → ${r.next ? `entra por **${r.next.name}**` : "sin ruta"}. Slug \`${r.slug}\`.${r.spec ? ` Spec: \`${r.spec}\`.` : ""}`, "");
+  if (r.state) lines.push(stateLine(r), "");
+  /* Sin ruta (issue cancelado) no hay tabla, camino ni comando: el último
+     renglón es la pregunta, que es lo único que hay que contestar. */
+  if (!r.next) { lines.push("## Preguntas abiertas", ""); for (const q of r.questions) lines.push(`- ${q}`); lines.push("", "## Siguiente paso", "", r.questions.at(-1), ""); return lines.join("\n"); }
   lines.push("| # | Estación | Entrada → Salida | Skills | Estado |", "|---|---|---|---|---|");
   for (const s of r.stations) lines.push(stationRow(s));
   lines.push("");
@@ -348,7 +417,7 @@ if (invokedDirectly) {
     try { const chunks = []; for await (const c of process.stdin) chunks.push(c); input = Buffer.concat(chunks).toString("utf8"); }
     catch { /* stdin no legible: se trata como vacío */ }
   }
-  const r = buildRoute(input, { cwd });
+  const r = await buildRoute(input, { cwd });
   process.stdout.write(json ? JSON.stringify(r, null, 2) + "\n" : renderMarkdown(r));
   process.exit(r.kind === "invalid" ? 2 : 0);
 }

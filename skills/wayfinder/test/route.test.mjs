@@ -5,7 +5,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, STATIONS } from "../scripts/route.mjs";
+import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, path, branches, entryForState, STATIONS } from "../scripts/route.mjs";
 import { fakeWorld } from "./helpers.mjs";
 
 /* ------------------------------------------------------------ classify --- */
@@ -17,11 +17,11 @@ test("una clave de Linear en el texto es un issue, con la clave en mayúsculas",
   assert.deepEqual(classify("ABC-3", { linearPrefix: "JAR" }), { kind: "idea" }, "con prefijo, solo ese prefijo");
 });
 
-test("una clave en mayúsculas sin prefijo configurado se enruta pero se pregunta", () => {
-  const r = buildRoute("Soportar UTF-8 en el parser", fakeWorld());
+test("una clave en mayúsculas sin prefijo configurado se enruta pero se pregunta", async () => {
+  const r = await buildRoute("Soportar UTF-8 en el parser", fakeWorld());
   assert.equal(r.kind, "issue");
   assert.ok(r.questions.some((q) => /UTF-8.*técnico/s.test(q)));
-  const r2 = buildRoute("JAR-12", { ...fakeWorld(), linearPrefix: "JAR" });
+  const r2 = await buildRoute("JAR-12", { ...fakeWorld(), linearPrefix: "JAR" });
   assert.ok(!r2.questions.some((q) => /técnico/.test(q)));
 });
 
@@ -72,23 +72,23 @@ test("slug ASCII, kebab, corto", () => {
 
 /* ---------------------------------------------------------- buildRoute --- */
 
-test("una skill del proyecto (.claude/skills) existe; una de la fábrica sin enlazar se distingue y da el ln", () => {
+test("una skill del proyecto (.claude/skills) existe; una de la fábrica sin enlazar se distingue y da el ln", async () => {
   const w = fakeWorld({ project: ["git-conventions"], factory: ["build-kickoff"], plugin: ["tdd"] });
-  const build = buildRoute("JAR-1", w).stations.find((s) => s.id === "build");
+  const build = (await buildRoute("JAR-1", w)).stations.find((s) => s.id === "build");
   assert.equal(build.skills.find((k) => k.name === "git-conventions").status, "existe");
   const bk = build.skills.find((k) => k.name === "build-kickoff");
   assert.equal(bk.status, "sin enlazar");
   assert.match(bk.link, /^ln -s .*build-kickoff .*skills\/build-kickoff$/);
   assert.equal(build.status, "sin enlazar");
-  const md = renderMarkdown(buildRoute("JAR-1", w));
+  const md = renderMarkdown(await buildRoute("JAR-1", w));
   assert.match(md, /no está enlazada/);
   assert.match(md, /ln -s/);
   assert.match(md, /reinicia la sesión/);
 });
 
-test("una idea recorre las cinco estaciones desde Shape", () => {
+test("una idea recorre las cinco estaciones desde Shape", async () => {
   const w = fakeWorld();
-  const r = buildRoute("login con enlace mágico", w);
+  const r = await buildRoute("login con enlace mágico", w);
   assert.equal(r.kind, "idea");
   assert.equal(r.slug, "login-con-enlace-magico");
   assert.deepEqual(r.stations.map((s) => s.id), ["shape", "slice", "build", "review", "ship"]);
@@ -96,8 +96,8 @@ test("una idea recorre las cinco estaciones desde Shape", () => {
   assert.equal(r.spec, "docs/specs/login-con-enlace-magico.md");
 });
 
-test("un issue entra por Build y no crea spec", () => {
-  const r = buildRoute("JAR-12", fakeWorld());
+test("un issue entra por Build y no crea spec", async () => {
+  const r = await buildRoute("JAR-12", fakeWorld());
   assert.deepEqual(r.stations.map((s) => s.id), ["build", "review", "ship"]);
   assert.equal(r.next.station, "build");
   assert.equal(r.key, "JAR-12");
@@ -105,22 +105,22 @@ test("un issue entra por Build y no crea spec", () => {
   assert.match(r.next.command, /JAR-12/);
 });
 
-test("una spec existente entra por Slice; una que no existe vuelve a Shape y lo dice", () => {
+test("una spec existente entra por Slice; una que no existe vuelve a Shape y lo dice", async () => {
   const w = fakeWorld({ specs: ["login.md"] });
-  assert.equal(buildRoute("docs/specs/login.md", w).next.station, "slice");
-  const r = buildRoute("docs/specs/otra.md", w);
+  assert.equal((await buildRoute("docs/specs/login.md", w)).next.station, "slice");
+  const r = await buildRoute("docs/specs/otra.md", w);
   assert.equal(r.next.station, "shape");
   assert.ok(r.questions.some((q) => /no existe/.test(q)));
 });
 
-test("pr entra por Review; merged por Ship", () => {
-  assert.equal(buildRoute("PR #4", fakeWorld()).next.station, "review");
-  assert.equal(buildRoute("PR #4 merged", fakeWorld()).next.station, "ship");
+test("pr entra por Review; merged por Ship", async () => {
+  assert.equal((await buildRoute("PR #4", fakeWorld())).next.station, "review");
+  assert.equal((await buildRoute("PR #4 merged", fakeWorld())).next.station, "ship");
 });
 
-test("estado vivo de cada skill: personal, plugin, por construir", () => {
+test("estado vivo de cada skill: personal, plugin, por construir", async () => {
   const w = fakeWorld({ personal: ["buzz-kickoff", "adversarial-review", "learnings"], plugin: ["grilling", "tdd"] });
-  const r = buildRoute("una idea", w);
+  const r = await buildRoute("una idea", w);
   const shape = r.stations.find((s) => s.id === "shape");
   assert.equal(shape.skills.find((k) => k.name === "buzz-kickoff").status, "existe");
   assert.equal(shape.skills.find((k) => k.name === "grilling").status, "existe");
@@ -130,41 +130,41 @@ test("estado vivo de cada skill: personal, plugin, por construir", () => {
   assert.equal(shape.status, "existe");
 });
 
-test("Build sin build-kickoff está por construir; con las tres skills, existe y sin paso manual", () => {
-  const sin = buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions"], plugin: ["tdd"] })).stations.find((s) => s.id === "build");
+test("Build sin build-kickoff está por construir; con las tres skills, existe y sin paso manual", async () => {
+  const sin = (await buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions"], plugin: ["tdd"] }))).stations.find((s) => s.id === "build");
   assert.equal(sin.status, "por construir");
-  const con = buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] })).stations.find((s) => s.id === "build");
+  const con = (await buildRoute("JAR-1", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] }))).stations.find((s) => s.id === "build");
   assert.equal(con.status, "existe");
   assert.equal(con.manual, null);
   assert.equal(con.command, "/build-kickoff JAR-1");
 });
 
-test("proveedores: autor de familia desconocida no tiene opuesto", () => {
+test("proveedores: autor de familia desconocida no tiene opuesto", async () => {
   const w = fakeWorld({ providers: { claude: "/b/claude", codex: "/b/codex", openrouter: null, author: { family: "gemini", how: "t" } } });
-  const review = buildRoute("PR #1", w).stations.find((s) => s.id === "review");
+  const review = (await buildRoute("PR #1", w)).stations.find((s) => s.id === "review");
   assert.equal(review.provider.available, false);
   assert.match(review.provider.why, /gemini/);
 });
 
-test("proveedores: Review necesita la familia opuesta y lo reporta", () => {
+test("proveedores: Review necesita la familia opuesta y lo reporta", async () => {
   const w = fakeWorld({ providers: { claude: "/b/claude", codex: null, openrouter: null, author: { family: "claude", how: "t" } } });
-  const review = buildRoute("PR #1", w).stations.find((s) => s.id === "review");
+  const review = (await buildRoute("PR #1", w)).stations.find((s) => s.id === "review");
   assert.equal(review.provider.need, "agent");
   assert.equal(review.provider.opposite, "claude");
   assert.equal(review.provider.available, false);
   assert.match(review.provider.why, /codex/);
 });
 
-test("preguntas abiertas: sin git, sin prefijo Linear", () => {
-  const r = buildRoute("una idea", fakeWorld({ git: false }));
+test("preguntas abiertas: sin git, sin prefijo Linear", async () => {
+  const r = await buildRoute("una idea", fakeWorld({ git: false }));
   assert.ok(r.questions.some((q) => /repositorio git/i.test(q)));
   assert.ok(r.questions.some((q) => /Linear/i.test(q)));
-  const r2 = buildRoute("una idea", { ...fakeWorld(), linearPrefix: "JAR" });
+  const r2 = await buildRoute("una idea", { ...fakeWorld(), linearPrefix: "JAR" });
   assert.ok(!r2.questions.some((q) => /Linear/i.test(q)));
 });
 
-test("entrada inválida devuelve una ruta vacía con motivo", () => {
-  const r = buildRoute("  ", fakeWorld());
+test("entrada inválida devuelve una ruta vacía con motivo", async () => {
+  const r = await buildRoute("  ", fakeWorld());
   assert.equal(r.kind, "invalid");
   assert.deepEqual(r.stations, []);
   assert.match(r.why, /vac[ií][ao]/);
@@ -174,8 +174,8 @@ test("la tabla de estaciones es la de stations.json, en orden", () => {
   assert.deepEqual(STATIONS.map((s) => s.n), [1, 2, 3, 4, 5]);
 });
 
-test("renderMarkdown lista estaciones con estado y el siguiente comando", () => {
-  const md = renderMarkdown(buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] })));
+test("renderMarkdown lista estaciones con estado y el siguiente comando", async () => {
+  const md = renderMarkdown(await buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] })));
   assert.match(md, /Build/);
   assert.match(md, /Siguiente/);
   assert.match(md, /`\/build-kickoff JAR-12`/);
@@ -198,9 +198,9 @@ test("stationStatus sobre una estación devuelve la misma forma que buildRoute c
 
 /* ---------------------------------------------------------- otra copia --- */
 
-test("una skill personal que apunta a otra copia distinta de la fábrica es 'otra copia' y da el ln -sfn", () => {
+test("una skill personal que apunta a otra copia distinta de la fábrica es 'otra copia' y da el ln -sfn", async () => {
   const w = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff"], linked: ["git-conventions"], plugin: ["tdd"] });
-  const build = buildRoute("JAR-1", w).stations.find((s) => s.id === "build");
+  const build = (await buildRoute("JAR-1", w)).stations.find((s) => s.id === "build");
   const bk = build.skills.find((k) => k.name === "build-kickoff");
   assert.equal(bk.status, "otra copia");
   assert.match(bk.where, /elsewhere\/build-kickoff\/SKILL\.md$/, "where es la ruta real, no el enlace");
@@ -216,28 +216,28 @@ test("otra copia agrega por debajo de sin enlazar y por encima de manual", () =>
   assert.equal(stationStatus({ ...STATIONS.find((s) => s.id === "build"), manual: "algo" }, w2).status, "otra copia");
 });
 
-test("proveedores: Review sin autor no sabe la familia opuesta y muestra ambos canales", () => {
+test("proveedores: Review sin autor no sabe la familia opuesta y muestra ambos canales", async () => {
   const w = fakeWorld({ providers: { claude: "/b/claude", codex: null, openrouter: null, author: null } });
-  const review = buildRoute("PR #1", w).stations.find((s) => s.id === "review");
+  const review = (await buildRoute("PR #1", w)).stations.find((s) => s.id === "review");
   assert.deepEqual(review.provider, {
     need: "agent", opposite: null, available: null,
     channels: { claude: "/b/claude", codex: null },
     why: "no sé quién escribió el cambio (CE_REVIEW_AUTHOR)",
   });
-  assert.match(renderMarkdown(buildRoute("PR #1", w)), /\*\*proveedor no disponible\*\*: no sé quién escribió/);
+  assert.match(renderMarkdown(await buildRoute("PR #1", w)), /\*\*proveedor no disponible\*\*: no sé quién escribió/);
 });
 
-test("renderMarkdown con otra copia en la primera estación da el comando y el ln -sfn sin bloquear", () => {
+test("renderMarkdown con otra copia en la primera estación da el comando y el ln -sfn sin bloquear", async () => {
   const w = fakeWorld({ elsewhere: ["build-kickoff"], factory: ["build-kickoff"], linked: ["git-conventions"], plugin: ["tdd"] });
-  const md = renderMarkdown(buildRoute("JAR-1", w));
+  const md = renderMarkdown(await buildRoute("JAR-1", w));
   assert.match(md, /`build-kickoff` \(otra copia\)/);
   assert.match(md, /## Siguiente paso\n\n`\/build-kickoff JAR-1`/);
   assert.match(md, /`ln -sfn .*build-kickoff .*skills\/build-kickoff`/);
   assert.doesNotMatch(md, /no está enlazada/);
 });
 
-test("stationRow es la fila de la tabla que renderMarkdown imprime", () => {
-  const r = buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] }));
+test("stationRow es la fila de la tabla que renderMarkdown imprime", async () => {
+  const r = await buildRoute("JAR-12", fakeWorld({ personal: ["git-conventions", "build-kickoff"], plugin: ["tdd"] }));
   const row = stationRow(r.stations[0]);
   assert.equal(row, "| 3 | Build | issue → workspace de Conductor en la rama del issue → PR que referencia la clave | `build-kickoff`, `tdd`, `git-conventions` | existe · proveedor: claude |");
   assert.ok(renderMarkdown(r).split("\n").includes(row));
@@ -332,8 +332,8 @@ test("una estación intermedia sin transición sin when es un error con su nombr
   assert.throws(() => path("a", [TRES[0], { ...TRES[1], transitions: [] }]), /\bB\b/);
 });
 
-test("buildRoute trae path y branches sobre el stations.json real; la tabla son las estaciones del path", () => {
-  const r = buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" });
+test("buildRoute trae path y branches sobre el stations.json real; la tabla son las estaciones del path", async () => {
+  const r = await buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" });
   assert.deepEqual(r.path, [
     { station: "build", name: "Build", command: "/build-kickoff JAR-8" },
     { station: "review", name: "Review", command: "/adversarial-review" },
@@ -345,20 +345,20 @@ test("buildRoute trae path y branches sobre el stations.json real; la tabla son 
   assert.equal(bloqueador.to, "slice");
   assert.equal(bloqueador.skill, "to-tickets-linear");
   assert.match(bloqueador.command, /<equipo>/, "un placeholder sin dato queda visible");
-  assert.deepEqual(buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" }).next, r.next, "next no cambia");
+  assert.deepEqual((await buildRoute("JAR-8", { ...fakeWorld(), linearPrefix: "JAR" })).next, r.next, "next no cambia");
 });
 
-test("una PR entra por Review y su path deja <key> visible en Ship; una idea recorre las cinco", () => {
-  const pr = buildRoute("PR #4", fakeWorld());
+test("una PR entra por Review y su path deja <key> visible en Ship; una idea recorre las cinco", async () => {
+  const pr = await buildRoute("PR #4", fakeWorld());
   assert.deepEqual(pr.path.map((p) => p.command), ["/adversarial-review", "/learnings <key>"]);
   assert.equal(pr.branches.length, 1);
   assert.match(pr.branches[0].when, /reviewer/);
-  const idea = buildRoute("login mágico", fakeWorld());
+  const idea = await buildRoute("login mágico", fakeWorld());
   assert.deepEqual(idea.path.map((p) => p.station), ["shape", "slice", "build", "review", "ship"]);
   assert.equal(idea.path[0].command, "/buzz-kickoff docs/specs/login-magico.md");
   assert.equal(idea.path[1].command, "/to-tickets-linear docs/specs/login-magico.md");
   assert.deepEqual(idea.branches.map((b) => b.to), ["outside"]);
-  const invalid = buildRoute("", fakeWorld());
+  const invalid = await buildRoute("", fakeWorld());
   assert.deepEqual([invalid.path, invalid.branches], [[], []]);
 });
 
@@ -366,39 +366,43 @@ test("una PR entra por Review y su path deja <key> visible en Ship; una idea rec
 
 /* test/golden/*.md es la salida de renderMarkdown ANTES de que el wayfinder
    leyera transitions (capturada el 2026-09-12 con este mismo mundo). La
-   salida de hoy es esa más las secciones "Ruta" y "Si te sales del camino":
+   salida de hoy es esa más las secciones "Ruta" y "Si te sales del camino"
+   y, para un issue sin lector de Linear, la pregunta abierta "sin clave":
    quitándolas, tiene que ser idéntica (tabla y último renglón incluidos). */
 const TODAS = ["buzz-kickoff", "grilling", "to-tickets-linear", "build-kickoff", "tdd", "git-conventions", "adversarial-review", "code-review", "learnings"];
 const goldenWorld = () => ({ ...fakeWorld({ personal: TODAS }), linearPrefix: "JAR" });
 const golden = (name) => readFileSync(join(here(), "golden", name), "utf8");
-const sinSeccionesNuevas = (md) => md.replace(/## Ruta\n\n(?:.+\n)+\n/, "").replace(/## Si te sales del camino\n\n(?:.+\n)+\n/, "");
+const sinSeccionesNuevas = (md) => md.replace(/## Ruta\n\n(?:.+\n)+\n/, "").replace(/## Si te sales del camino\n\n(?:.+\n)+\n/, "")
+  .replace(/## Preguntas abiertas\n\n- no pude leer el estado de .+\n\n/, "");
 
-test("golden JAR-8: la salida de hoy más Ruta y ramas, antes de Siguiente paso; el último renglón es el comando", () => {
-  const md = renderMarkdown(buildRoute("JAR-8", goldenWorld()));
+test("golden JAR-8: la salida de hoy más Ruta y ramas, antes de Siguiente paso; el último renglón es el comando", async () => {
+  const md = renderMarkdown(await buildRoute("JAR-8", goldenWorld()));
   assert.equal(sinSeccionesNuevas(md), golden("jar-8.md"));
-  assert.match(md, /## Ruta\n\n1\. Build — `\/build-kickoff JAR-8`\n2\. Review — `\/adversarial-review`\n3\. Ship \/ Learn — `\/learnings JAR-8`\n\n## Si te sales del camino\n\n- Si el issue destapa un bloqueador que no está en el plan: `\/to-tickets-linear <equipo> \(un issue que bloquea al actual; luego Build sobre el nuevo\)`\n- Si una PR cierra varios issues de la misma spec: `gh pr create --base main \(Closes <clave> por cada issue, sin rama nueva\)`\n\n## Siguiente paso/);
+  assert.match(md, /## Preguntas abiertas\n\n- no pude leer el estado de JAR-8 en Linear \(sin clave\); si ya está en revisión o mergeado, entra por Review o Ship\n/);
+  assert.doesNotMatch(md, /está \*\*/, "sin lectura no hay línea de estado");
+  assert.match(md, /## Ruta\n\n1\. Build — `\/build-kickoff JAR-8`\n2\. Review — `\/adversarial-review`\n3\. Ship \/ Learn — `\/learnings JAR-8`\n\n## Si te sales del camino\n\n- Si el issue destapa un bloqueador que no está en el plan: `\/to-tickets-linear <equipo> \(un issue que bloquea al actual; luego Build sobre el nuevo\)`\n- Si una PR cierra varios issues de la misma spec: `gh pr create --base main \(Closes <clave> por cada issue, sin rama nueva\)`\n\n## Preguntas abiertas/);
   assert.ok(md.indexOf("|---|") < md.indexOf("## Ruta"), "la tabla va antes de la ruta");
   assert.equal(md.trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
 });
 
-test("golden idea: cinco pasos con la spec rellena y la rama del otro plano", () => {
-  const md = renderMarkdown(buildRoute("login con enlace mágico por email", goldenWorld()));
+test("golden idea: cinco pasos con la spec rellena y la rama del otro plano", async () => {
+  const md = renderMarkdown(await buildRoute("login con enlace mágico por email", goldenWorld()));
   assert.equal(sinSeccionesNuevas(md), golden("idea.md"));
   assert.match(md, /## Ruta\n\n1\. Shape — `\/buzz-kickoff docs\/specs\/login-con-enlace-magico-por\.md`\n2\. Slice — `\/to-tickets-linear docs\/specs\/login-con-enlace-magico-por\.md`\n3\. Build — `\/build-kickoff <key>`\n4\. Review — `\/adversarial-review`\n5\. Ship \/ Learn — `\/learnings <key>`\n/);
   assert.match(md, /## Si te sales del camino\n\n- Si la historia es del plano de trabajo/);
   assert.equal(md.trimEnd().split("\n").at(-1), "`/buzz-kickoff docs/specs/login-con-enlace-magico-por.md`");
 });
 
-test("golden PR mergeada: un solo paso y sin sección de ramas", () => {
-  const md = renderMarkdown(buildRoute("PR #4 merged", goldenWorld()));
+test("golden PR mergeada: un solo paso y sin sección de ramas", async () => {
+  const md = renderMarkdown(await buildRoute("PR #4 merged", goldenWorld()));
   assert.equal(sinSeccionesNuevas(md), golden("pr-merged.md"));
   assert.match(md, /## Ruta\n\n1\. Ship \/ Learn — `\/learnings <key>`\n\n## Siguiente paso/);
   assert.doesNotMatch(md, /Si te sales del camino/);
   assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings <key>`");
 });
 
-test("las secciones nuevas van antes de las preguntas abiertas", () => {
-  const md = renderMarkdown(buildRoute("una idea", fakeWorld({ git: false })));
+test("las secciones nuevas van antes de las preguntas abiertas", async () => {
+  const md = renderMarkdown(await buildRoute("una idea", fakeWorld({ git: false })));
   assert.ok(md.indexOf("## Ruta") < md.indexOf("## Si te sales del camino"));
   assert.ok(md.indexOf("## Si te sales del camino") < md.indexOf("## Preguntas abiertas"));
   assert.ok(md.indexOf("## Preguntas abiertas") < md.indexOf("## Siguiente paso"));
@@ -409,4 +413,151 @@ test("un ciclo en el camino feliz o dos transiciones sin when son stations.json 
   assert.throws(() => path("a", ciclo), (e) => /\bB\b/.test(e.message) && /ciclo/.test(e.message));
   const dos = [{ ...TRES[0], transitions: [{ to: "b", command: "/b" }, { to: "c", command: "/c" }] }, TRES[1], TRES[2]];
   assert.throws(() => path("a", dos), (e) => /\bA\b/.test(e.message) && /2 transiciones sin when/.test(e.message));
+});
+
+/* ------------------------------------------------------- entryForState --- */
+
+/* La tabla del mapeo de la spec, fila a fila. Por categoría (`type`), nunca
+   por nombre: el nombre lo edita un admin y la categoría no. */
+test("entryForState: backlog y unstarted entran por Build, tengan o no PR abierta", () => {
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: null }), "build");
+  assert.equal(entryForState({ type: "unstarted", name: "Todo", pr: null }), "build");
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: "open" }), "build");
+});
+
+test("entryForState: started sin PR es Build; started con PR abierta es Review", () => {
+  assert.equal(entryForState({ type: "started", name: "In Progress", pr: null }), "build");
+  assert.equal(entryForState({ type: "started", name: "In Review", pr: "open" }), "review");
+});
+
+test("entryForState: PR mergeada o completed entran por Ship", () => {
+  assert.equal(entryForState({ type: "started", name: "In Review", pr: "merged" }), "ship");
+  assert.equal(entryForState({ type: "backlog", name: "Backlog", pr: "merged" }), "ship");
+  assert.equal(entryForState({ type: "completed", name: "Done", pr: null }), "ship");
+  assert.equal(entryForState({ type: "completed", name: "Done", pr: "merged" }), "ship");
+});
+
+test("entryForState: canceled y duplicate no tienen ruta, ni con PR mergeada", () => {
+  assert.equal(entryForState({ type: "canceled", name: "Canceled", pr: null }), null);
+  assert.equal(entryForState({ type: "duplicate", name: "Duplicate", pr: null }), null);
+  assert.equal(entryForState({ type: "canceled", name: "Canceled", pr: "merged" }), null);
+});
+
+/* ------------------------------------------------- estado desde Linear --- */
+
+/* Un lector de estado de mentira: devuelve lo que se le da (o lanza) y
+   cuenta cuántas veces se le llamó, para afirmar que ideas, specs y PRs no
+   tocan Linear. */
+function fakeReader(result) {
+  const reader = async (key) => { reader.calls.push(key); if (result instanceof Error) throw result; return result; };
+  reader.calls = [];
+  return reader;
+}
+const linearWorld = (result) => ({ ...goldenWorld(), issueState: fakeReader(result) });
+
+test("Done con PR mergeada entra por Ship: la salida dice de dónde salió el estado y termina con /learnings", async () => {
+  const w = linearWorld({ type: "completed", name: "Done", pr: "merged" });
+  const r = await buildRoute("JAR-8", w);
+  assert.deepEqual(w.issueState.calls, ["JAR-8"]);
+  assert.equal(r.entry, "ship");
+  assert.deepEqual(r.stations.map((s) => s.id), ["ship"]);
+  assert.deepEqual(r.path.map((p) => p.command), ["/learnings JAR-8"]);
+  assert.deepEqual(r.branches, []);
+  assert.equal(r.next.command, "/learnings JAR-8");
+  assert.deepEqual(r.state, { source: "linear", type: "completed", name: "Done", pr: "merged" });
+  assert.deepEqual(r.questions, []);
+  const md = renderMarkdown(r);
+  assert.match(md, /^JAR-8 está \*\*Done\*\* en Linear \(PR mergeada\) → entra por \*\*Ship \/ Learn\*\*$/m);
+  assert.ok(md.indexOf("está **Done**") < md.indexOf("|---|"), "la línea de estado va antes de la tabla");
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/learnings JAR-8`");
+});
+
+test("started con PR abierta entra por Review; started sin PR y backlog siguen en Build, con la línea de estado", async () => {
+  const review = await buildRoute("JAR-8", linearWorld({ type: "started", name: "In Review", pr: "open" }));
+  assert.equal(review.entry, "review");
+  assert.deepEqual(review.path.map((p) => p.station), ["review", "ship"]);
+  assert.equal(review.next.command, "/adversarial-review");
+  assert.match(renderMarkdown(review), /^JAR-8 está \*\*In Review\*\* en Linear \(PR abierta\) → entra por \*\*Review\*\*$/m);
+
+  const started = await buildRoute("JAR-8", linearWorld({ type: "started", name: "In Progress", pr: null }));
+  assert.equal(started.entry, "build");
+  assert.equal(started.next.command, "/build-kickoff JAR-8");
+  assert.deepEqual(started.state, { source: "linear", type: "started", name: "In Progress", pr: null });
+  assert.match(renderMarkdown(started), /^JAR-8 está \*\*In Progress\*\* en Linear → entra por \*\*Build\*\*$/m, "sin PR no hay paréntesis");
+
+  const backlog = await buildRoute("JAR-8", linearWorld({ type: "backlog", name: "Backlog", pr: null }));
+  assert.equal(backlog.entry, "build");
+  assert.deepEqual(backlog.questions, []);
+  assert.equal(renderMarkdown(backlog).trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
+});
+
+test("canceled no tiene ruta: next null, una pregunta, y el markdown termina con la pregunta en vez de un comando", async () => {
+  const r = await buildRoute("JAR-8", linearWorld({ type: "canceled", name: "Canceled", pr: null }));
+  assert.equal(r.entry, null);
+  assert.equal(r.next, null);
+  assert.deepEqual([r.stations, r.path, r.branches], [[], [], []]);
+  assert.deepEqual(r.state, { source: "linear", type: "canceled", name: "Canceled", pr: null });
+  assert.deepEqual(r.questions, ["JAR-8 está cancelado en Linear: ¿reabrir o dejarlo?"]);
+  const md = renderMarkdown(r);
+  assert.match(md, /^JAR-8 está \*\*Canceled\*\* en Linear → sin ruta$/m);
+  assert.doesNotMatch(md, /\|---\|/, "sin ruta no hay tabla");
+  assert.doesNotMatch(md, /build-kickoff/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "JAR-8 está cancelado en Linear: ¿reabrir o dejarlo?");
+  const dup = await buildRoute("JAR-8", linearWorld({ type: "duplicate", name: "Duplicate", pr: "merged" }));
+  assert.equal(dup.next, null);
+  assert.match(dup.questions[0], /duplicado/);
+});
+
+test("un lector que lanza no rompe la ruta: Build como siempre, state null y la causa en la pregunta", async () => {
+  for (const [why, re] of [["sin red: timeout leyendo JAR-8 en Linear", /\(sin red: timeout/], ["JAR-8 no existe en Linear", /\(JAR-8 no existe en Linear\)/]]) {
+    const r = await buildRoute("JAR-8", linearWorld(new Error(why)));
+    assert.equal(r.entry, "build");
+    assert.equal(r.state, null);
+    assert.equal(r.next.command, "/build-kickoff JAR-8");
+    assert.equal(r.questions.length, 1);
+    assert.match(r.questions[0], /^no pude leer el estado de JAR-8 en Linear \(/);
+    assert.match(r.questions[0], re);
+    assert.match(r.questions[0], /entra por Review o Ship$/);
+  }
+});
+
+test("sin lector (sin clave) no se llama a nada: Build, state null y la pregunta dice sin clave", async () => {
+  const r = await buildRoute("JAR-8", { ...goldenWorld(), issueState: null });
+  assert.equal(r.entry, "build");
+  assert.equal(r.state, null);
+  assert.deepEqual(r.questions, ["no pude leer el estado de JAR-8 en Linear (sin clave); si ya está en revisión o mergeado, entra por Review o Ship"]);
+  const md = renderMarkdown(r);
+  assert.doesNotMatch(md, /en Linear \(PR|está \*\*/);
+  assert.equal(md.trimEnd().split("\n").at(-1), "`/build-kickoff JAR-8`");
+});
+
+test("por defecto, sin clave en el entorno, no hay lector: nada sale de la máquina", async () => {
+  const w = { ...goldenWorld(), issueState: undefined, env: { HOME: "/nonexistent", LINEAR_KEY_FILE: "/nonexistent", JARVIIS_LINEAR_URL: "http://127.0.0.1:1/" } };
+  const r = await buildRoute("JAR-8", w);
+  assert.equal(r.state, null);
+  assert.match(r.questions[0], /\(sin clave\)/);
+});
+
+test("idea, spec, PR y PR mergeada nunca invocan el lector; solo el issue", async () => {
+  const reader = fakeReader({ type: "completed", name: "Done", pr: "merged" });
+  const w = { ...fakeWorld({ specs: ["login.md"] }), issueState: reader };
+  for (const input of ["login con enlace mágico", "docs/specs/login.md", "docs/specs/otra.md", "PR #4", "PR #4 merged", "JAR-12 en la PR #3", ""]) {
+    const r = await buildRoute(input, w);
+    assert.equal(r.state ?? null, null, input);
+  }
+  assert.deepEqual(reader.calls, []);
+  await buildRoute("implementa JAR-12 ya", w);
+  assert.deepEqual(reader.calls, ["JAR-12"]);
+});
+
+test("por defecto, con clave en el entorno, el lector es el cliente real de linear.mjs (aquí contra el stub)", async () => {
+  const { linearStub } = await import("../../to-tickets-linear/test/stub.mjs");
+  const stub = await linearStub({ issues: [{ identifier: "JAR-8", state: { name: "Done", type: "completed" }, attachments: [{ sourceType: "github", metadata: { status: "merged" } }] }] });
+  try {
+    const env = { HOME: "/nonexistent", LINEAR_API_KEY: "lin_test", JARVIIS_LINEAR_URL: stub.url };
+    const r = await buildRoute("JAR-8", { ...goldenWorld(), issueState: undefined, env });
+    assert.deepEqual(r.state, { source: "linear", type: "completed", name: "Done", pr: "merged" });
+    assert.equal(r.next.command, "/learnings JAR-8");
+    assert.deepEqual(stub.state.mutations, [], "el wayfinder no escribe en Linear");
+  } finally { await stub.close(); }
 });
