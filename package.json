@@ -9,6 +9,7 @@
     "test": "node --test 'providers/test/*.test.mjs' 'skills/*/test/*.test.mjs' 'scripts/test/*.test.mjs'",
     "ask": "node providers/bin/ask.mjs",
     "stations": "node skills/wayfinder/scripts/stations.mjs",
+    "flows": "node skills/wayfinder/scripts/flows.mjs",
     "agents:sync": "node scripts/agents-sync.mjs"
   }
 }
