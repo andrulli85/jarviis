@@ -29,7 +29,11 @@ export function stampFromName(name) {
   if (!m) return null;
   const [, y, mo, d, h, mi, s, ms] = m.map(Number);
   const at = new Date(Date.UTC(y, mo - 1, d, h, mi, s, ms));
-  return Number.isNaN(at.getTime()) ? null : at;
+  /* Date.UTC normaliza en vez de fallar: un 31 de febrero sale 3 de marzo
+     con una fecha "válida". Un nombre así no parsea; manda el mtime. */
+  const same = at.getUTCFullYear() === y && at.getUTCMonth() === mo - 1 && at.getUTCDate() === d
+    && at.getUTCHours() === h && at.getUTCMinutes() === mi && at.getUTCSeconds() === s;
+  return same ? at : null;
 }
 
 export function readEvidence({ evidenceDir, now = new Date() } = {}) {

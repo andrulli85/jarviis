@@ -317,13 +317,16 @@ export async function health(env = process.env, opts = {}) {
   const stateFile = opts.stateFile || defaultStateFile(env);
   const detected = {};
   for (const channel of HEALTH_CHANNELS) detected[channel] = await detect(channel, env, exec);
-  /* Sondeo (D7): los que pasan el detector, a la vez; cada resultado va a
-     health.json y de ahí se evalúa como cualquier otra evidencia. */
+  /* Sondeo (D7): los que pasan el detector, a la vez. Cada resultado va a
+     health.json y también entra en memoria: un disco que no deja escribir
+     no convierte un pong que llegó en "sin sondear". */
+  const probed = {};
   if (opts.probe) {
     const askFn = opts.ask || defaultProbe(env);
     const timeoutMs = opts.probeTimeoutMs || PROBE_TIMEOUT_MS;
     const live = HEALTH_CHANNELS.filter((c) => !detected[c].down);
     const results = await Promise.all(live.map((c) => probeChannel(c, askFn, timeoutMs)));
+    live.forEach((c, i) => { probed[c] = { at: now, ok: results[i].ok, why: results[i].why ?? null, latency: results[i].seconds ?? null }; });
     await Promise.all(live.map((c, i) => recordHealth(stateFile, c, results[i], now)));
   }
   const ev = readEvidence({ evidenceDir, now });
@@ -336,6 +339,7 @@ export async function health(env = process.env, opts = {}) {
     const st = stateFact(persisted[channel], now);
     out.ignored += st.ignored;
     if (st.fact) facts.push(st.fact);
+    if (probed[channel]) facts.push(probed[channel]);
     const fact = latest(facts, now);
     out[channel] = fact ? { bin: d.bin, ...verdictOf(fact, now) } : { bin: d.bin, status: "unprobed" };
   }

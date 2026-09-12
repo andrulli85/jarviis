@@ -290,3 +290,14 @@ test("sin stateFile, ask() escribe en $HOME/.local/state/jarviis/health.json del
   const h = await health(env, { evidenceDir: join(env.HOME, "nada"), exec: okExec, ask: noAsk });
   assert.equal(h.claude.status, "ok", "health() lo lee de la misma ruta por defecto");
 });
+
+test("probe que no puede persistir: el resultado del pong se devuelve igual, sin error", async () => {
+  const w = world();
+  const ask = async () => ({ ok: true, seconds: 0.7 });
+  const blocked = join(w.stateFile, "..", "..");
+  mkdirSync(blocked, { recursive: true });
+  writeFileSync(join(blocked, "state"), "no soy un directorio");
+  const h = await health(allPresent(), { ...w, probe: true, ask });
+  assert.deepEqual([h.claude.status, h.codex.status, h.openrouter.status], ["ok", "ok", "ok"]);
+  assert.equal(h.claude.latency, 0.7);
+});

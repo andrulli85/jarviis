@@ -75,3 +75,11 @@ test("un directorio con nombre .json no es evidencia: se ignora sin romper", () 
   assert.equal(r.records.length, 1);
   assert.equal(r.ignored, 1);
 });
+
+test("una fecha de calendario inválida en el nombre no se normaliza: no parsea y manda el mtime", () => {
+  const stamp = new Date("2026-09-10T08:00:00Z");
+  const dir = evidenceDir([["2026-02-31T10-00-00-000-x.json", review(), stamp]]);
+  const r = readEvidence({ evidenceDir: dir, now: NOW });
+  assert.equal(r.records.length, 1);
+  assert.equal(r.records[0].at.getTime(), stamp.getTime(), "no es el 3 de marzo");
+});
