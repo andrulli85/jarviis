@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { cpSync, mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, realpathSync, symlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, STATIONS } from "../scripts/route.mjs";
+import { fakeWorld } from "./helpers.mjs";
 
 /* ------------------------------------------------------------ classify --- */
 
@@ -70,33 +71,6 @@ test("slug ASCII, kebab, corto", () => {
 });
 
 /* ---------------------------------------------------------- buildRoute --- */
-
-/* `personal` crea directorios reales en skillsDir, no enlaces: si el mismo
-   nombre va también en `factory`, findSkill lo verá como "otra copia" (su ruta
-   real no cae en factoryDir). Para una skill enlazada a la fábrica usa
-   `linked`; para una enlazada a otra copia, `elsewhere`. */
-function fakeWorld({ personal = [], plugin = [], project = [], factory = [], linked = [], elsewhere = [], specs = [], git = true, providers } = {}) {
-  const root = mkdtempSync(join(tmpdir(), "wayfinder-"));
-  const skillsDir = join(root, "skills"); mkdirSync(skillsDir);
-  for (const s of personal) { mkdirSync(join(skillsDir, s)); writeFileSync(join(skillsDir, s, "SKILL.md"), "x"); }
-  const factoryDir = join(root, "factory"); mkdirSync(factoryDir);
-  for (const s of new Set([...factory, ...linked])) { mkdirSync(join(factoryDir, s)); writeFileSync(join(factoryDir, s, "SKILL.md"), "x"); }
-  for (const s of linked) symlinkSync(join(factoryDir, s), join(skillsDir, s));
-  for (const s of elsewhere) {
-    const d = join(root, "elsewhere", s); mkdirSync(d, { recursive: true }); writeFileSync(join(d, "SKILL.md"), "x");
-    symlinkSync(d, join(skillsDir, s));
-  }
-  const pluginsDir = join(root, "plugins");
-  for (const s of plugin) {
-    const d = join(pluginsDir, "cache", "vendor", "pack", "1.0", "skills", "eng", s);
-    mkdirSync(d, { recursive: true }); writeFileSync(join(d, "SKILL.md"), "x");
-  }
-  const cwd = join(root, "repo"); mkdirSync(cwd);
-  if (git) mkdirSync(join(cwd, ".git"));
-  for (const s of project) { mkdirSync(join(cwd, ".claude", "skills", s), { recursive: true }); writeFileSync(join(cwd, ".claude", "skills", s, "SKILL.md"), "x"); }
-  for (const s of specs) { mkdirSync(join(cwd, "docs", "specs"), { recursive: true }); writeFileSync(join(cwd, "docs", "specs", s), "x"); }
-  return { skillsDir, pluginsDir, cwd, factoryDir, linearPrefix: null, providers: providers || { claude: "/b/claude", codex: "/b/codex", openrouter: "clave presente", author: { family: "claude", how: "t" } } };
-}
 
 test("una skill del proyecto (.claude/skills) existe; una de la fábrica sin enlazar se distingue y da el ln", () => {
   const w = fakeWorld({ project: ["git-conventions"], factory: ["build-kickoff"], plugin: ["tdd"] });

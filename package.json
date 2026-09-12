@@ -8,6 +8,7 @@
   "scripts": {
     "test": "node --test 'providers/test/*.test.mjs' 'skills/*/test/*.test.mjs' 'scripts/test/*.test.mjs'",
     "ask": "node providers/bin/ask.mjs",
+    "stations": "node skills/wayfinder/scripts/stations.mjs",
     "agents:sync": "node scripts/agents-sync.mjs"
   }
 }
