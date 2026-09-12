@@ -1,9 +1,10 @@
 ---
 title: "Script npm run stations que imprime la tabla de estaciones con su estado real"
-status: sliced
+status: shipped
 date: 2026-09-11
 issue: [JAR-5, JAR-8, JAR-6, JAR-7]
 grill: docs/grill/npm-run-stations/verdict.md
+learnings: [vault/learnings/2026-09-12-npm-11-no-longer-prints-npm-error-on-script-exit.md]
 ---
 
 # `npm run stations`: comprobar la instalación de la fábrica de un vistazo
