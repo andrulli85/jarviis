@@ -2,7 +2,7 @@
 title: "npm run stations -- --check comprueba que cada proveedor responde y muestra la deuda de Review"
 status: sliced
 date: 2026-09-12
-issue: null
+issue: [JAR-14, JAR-15]
 grill: docs/grill/stations-check-gpt/verdict.md
 ---
 
@@ -33,12 +33,11 @@ donde **Codex Grill (GPT-5.6, `xhigh`) interrogó a Claude Terminal** sobre el p
 | D8 | Salud con tres estados: `ok` (evidencia positiva reciente), `down`/`quota` (negativa reciente), `unprobed` (nada en la ventana). **`unprobed` también sale 1** en `--check`, con `codex: sin evidencia reciente (7 d); corre npm run stations -- --probe`. `--probe` persiste su resultado por canal en `~/.local/state/jarviis/health.json` (`status`, `at` RFC 3339 con zona, `latency|why`) | Codex Grill Q1 |
 | D9 | Evidencia de salud: JSON de `adversarial-review` regulares y parseables con `agent` = canal, de cualquier repo (el `to` no importa para salud). Instante = timestamp del nombre de archivo; si no parsea, `mtime`. El más reciente manda; en empate gana el fallo. Corruptos, sin `agent` o con fecha futura se ignoran y se cuentan en `--json` como `ignored`. "try again at" del `why` se interpreta en zona local | Codex Grill Q2 |
 | D10 | Ventana única de **7 días** para toda evidencia positiva, en los tres canales. `claude auth status` fallido, clave OpenRouter ausente o binario ausente degradan a `down` en el acto; cuando salen bien **no** suben a `ok`: dejan `unprobed` | Codex Grill Q3 |
-| D11 | *(pendiente 1 del veredicto, propuesta de Claude Terminal)* Entre varias evidencias de review cuyo `to` es ancestro de `HEAD`, manda la de **`to` más reciente en la historia** (`git merge-base --is-ancestor` entre ellas; a igual posición, la de instante más reciente). Una evidencia cuyo `to` dejó de ser ancestro (rebase, squash) **no cuenta**: no se inventa una relación que git no demuestra; si ninguna cuenta, "sin evidencia de review en este repo" | veredicto |
+| D11 | *(pendiente 1 del veredicto; cerrado en el quiz cruzado)* La deuda es un **conjunto**, no un checkpoint: elegibles = evidencias `ok:true` con `verdict` cuyo `to` es ancestro de `HEAD` (un `to` que dejó de serlo por rebase/squash no cuenta); `pending = git rev-list HEAD ^to1 ^to2 …`. Solo el comando necesita un `from` único: `<to>..HEAD` con un elegible, `<merge-base>..HEAD` con varios (sobreinclusivo, nunca subinclusivo, con nota); si hay varias bases, se elige la de fecha de commit más antigua | veredicto + quiz Q2 |
 | D12 | *(pendiente 2 del veredicto, propuesta de Claude Terminal)* Todo uso real de un canal pasa por `providers.ask()`; `ask()` escribe la evidencia de salud (`ok` con latencia o `down` con `why`) en `health.json` al terminar. Así OpenRouter y Claude renuevan la ventana con cualquier uso (un `/ping-test`, una review, un juez), no solo con `--probe` | veredicto |
 | D13 | *(pendiente 3 del veredicto, para Build)* `health.json` se escribe atómico (archivo temporal + `rename`); ausente o corrupto = sin evidencia persistida (`unprobed`), nunca error; ruta, reloj y `exec` inyectables en tests | veredicto |
 
-D11 y D12 son decisiones de Claude Terminal sobre pendientes que el veredicto dejaba a Andy;
-Andy puede vetarlas en Slice.
+D11 se cerró en el quiz cruzado de Slice (`docs/grill/slice-stations-check/`); D12 es decisión de Claude Terminal que Andy puede vetar.
 
 ## Contrato
 
@@ -59,10 +58,10 @@ Devuelve `{ claude, codex, openrouter, ignored }` con, por canal,
 
 ### `reviewDebt({ cwd, evidenceDir, git })` en `stations.mjs`
 
-`{ lastReviewed: { sha, at } | null, pending: [sha…], command: string | null, note }`. Evidencia
-elegible: `ok:true` con `verdict` y `to` ancestro de `HEAD` en `cwd`; selección por D11; `pending`
-= `git log <to>..HEAD --format=%h`; `command` = `/adversarial-review <to7>..HEAD` si hay pendientes;
-`note` = "/code-review no deja evidencia y no cuenta".
+`{ lastReviewed: [{ sha, at }], pending: [sha…], command: string | null, note }`, sobre
+`readEvidence()` de `providers/evidence.mjs` (la única copia de D9). Elegibles y `pending` por D11
+(conjunto: `git rev-list HEAD ^to…`); `command` por D11; `note` = "/code-review no deja evidencia y
+no cuenta" (+ `incluye N ya revisados` cuando el rango es sobreinclusivo).
 
 ### `failures()` y exit
 
@@ -83,46 +82,39 @@ D8). La deuda de Review nunca entra (D3).
 
 ## Rebanadas
 
-Cuatro fases del veredicto en tres rebanadas: la salud (fases 1+2) se demuestra sola con
-`--probe`; la deuda (fase 3) se demuestra sola con un repo temporal; las pruebas (fase 4) van
-dentro de cada una, no aparte.
+Dos, decididas en el quiz cruzado de Slice (Codex Grill ↔ Claude Terminal, 2 rondas): la
+documentación viaja con la funcionalidad que explica, y el bloqueo entre ambas es por una API
+compartida, no por orden.
 
-### 1. `health()` en `providers/` y su integración en `stations` (D1, D4, D6–D10, D12, D13)
+### 1. Salud: `health()`, `--probe`, `evidence.mjs` y su README (D1, D4, D6–D10, D12, D13)
 
-- `providers/index.mjs`: `health()` según el contrato; `ask()` escribe la evidencia de salud al
-  terminar (D12); escritura atómica de `stateFile` (D13).
-- `stations.mjs`: `collectStations` llama a `health()`; `renderStations` pinta fila y pie nuevos;
-  `failures()` cuenta `quota`/`down`/`unprobed`; flag `--probe`.
-- Tests (`providers/test`, `skills/wayfinder/test`): fixtures de evidencia en directorio temporal
-  (ok reciente, cuota futura, cuota pasada, fallo sin fecha, corrupto, sin `agent`, fecha futura,
-  otro repo, empate éxito/fallo, nombre sin timestamp → `mtime`); `stateFile` ausente/corrupto/
-  válido; `exec` falso para `auth status`; `ask` inyectado (responde, falla, timeout); `now`
-  inyectado para la ventana; los tres canales; `failures()` por estado; render de fila y pie.
+- `providers/evidence.mjs`: `readEvidence({ evidenceDir })` con las reglas de D9; es la API que
+  la rebanada 2 importa.
+- `providers/index.mjs`: `health()` según el contrato; `ask()` escribe la evidencia de salud (D12);
+  `stateFile` atómico (D13).
+- `stations.mjs`: `collectStations` usa `health()`; fila y pie nuevos; `failures()` cuenta
+  `quota`/`down`/`unprobed`; flag `--probe`; `--json providers`.
+- README: `--probe`, estados, ventana de 7 días, "la primera vez sale rojo".
+- Tests sin red: fixtures de evidencia (todas las variantes de D9), `stateFile`, `exec` falso,
+  `ask` inyectado, `now` inyectado, `failures()` por estado, render.
 
-Criterios: `npm test` en verde; en esta máquina `npm run stations -- --check; echo $?` → `1` con
-"sin evidencia reciente" hasta un `--probe`; `npm run stations -- --probe` imprime los tres
-resultados y deja `health.json`; el `--check` siguiente sale 0 (o 1 con `codex sin cuota…` si
-Codex está agotado); `--json` trae `providers.codex.status`.
+Criterios: `npm test`; en esta máquina `--check` → 1 antes de sondear, `--probe` deja
+`health.json`, el `--check` siguiente → 0 (o 1 por cuota); `--json providers.codex.status`;
+README menciona `--probe` y `sin sondear`; sin "Siguiente paso".
 
-### 2. `reviewDebt()` y la sección "Review pendiente" (D2, D5, D11) — bloqueada por 1
+### 2. Deuda de Review: `reviewDebt()`, "Review pendiente" y su README (D2, D3, D5, D11) — bloqueada por 1
 
-- `stations.mjs`: `reviewDebt()`; sección en el render; `review` en `--json`; `failures()` no cambia.
-- Tests: repo git temporal con cuatro commits y evidencia con `to` en el segundo → `pending` = 2,
-  `command` correcto; dos evidencias ancestro → gana la más reciente en la historia; evidencia con
-  `to` no ancestro (rebase simulado) → no cuenta; sin evidencia → "sin evidencia"; `ok:false` no
-  cuenta.
+- `stations.mjs`: `reviewDebt()` sobre `readEvidence()`; conjunto de checkpoints (D11); sección
+  "Review pendiente"; `--json review`; `failures()` no cambia.
+- README: "Review pendiente" es informativa y no cuenta `/code-review`; fila en
+  `docs/plans/fabrica.md`.
+- Tests con repo git temporal: cuatro commits y `to` en el segundo → 2 pendientes; dos ramas
+  revisadas por separado y fusionadas → `pending` = merge y posteriores, comando desde el
+  merge-base con nota; `to` no ancestro → no cuenta; sin evidencia; `ok:false` no cuenta.
 
-Criterios: `npm test` en verde; en `jarviis` hoy, "Review pendiente" muestra `N commits sin review
-adversarial desde c7733fe` (o la última evidencia `ok:true` real) con el comando.
-
-### 3. README y `docs/plans/fabrica.md` — bloqueada por 2
-
-- README, sección de `npm run stations`: los estados de salud, que `--check` necesita evidencia
-  reciente (primera vez roja: correr `--probe`), que `--probe` gasta una llamada por canal, y que
-  "Review pendiente" es informativa y no cuenta `/code-review`.
-- `docs/plans/fabrica.md`: fila con la fase y el commit al cerrar.
-
-Criterios: README menciona `--probe`, `unprobed`/`sin sondear` y "Review pendiente"; `npm test`.
+Criterios: `npm test`; en `jarviis` hoy "Review pendiente" muestra los commits desde la última
+evidencia `ok:true` real (o "sin evidencia") con el comando; `--check` mantiene su exit; README y
+plan actualizados.
 
 ## Fuera de alcance
 

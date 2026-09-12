@@ -1,0 +1,11 @@
+{
+  "channel_id": "4d35cade-bead-46a1-8dcd-0ff92e4e97b2",
+  "root_event_id": "14893d9feae21a4650634503f525baba279df2dac5d74fc5f19b85f291e61251",
+  "slug": "slice-stations-check",
+  "mode": "dec",
+  "brief": "PLANS/slice-stations-check/brief.md",
+  "brief_source": "/Users/andrulli/personal/claude-toolkit/jarviis/docs/tickets/stations-check-proveedores-y-review.json",
+  "started_at": 1789228589,
+  "agent_pubkey": "647ffdc477d3ee71ce88d9a0bd4f867a6c63a15c9ec90be74168729a1628edfc",
+  "answered_by": "Claude Terminal"
+}

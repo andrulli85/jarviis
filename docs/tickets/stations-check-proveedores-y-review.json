@@ -1,0 +1,34 @@
+{
+  "team": "JAR",
+  "spec": "docs/specs/stations-check-proveedores-y-review.md",
+  "issues": [
+    {
+      "ref": "health",
+      "title": "Añadir providers.health() y --probe para que stations --check sea verde solo con evidencia reciente de respuesta",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 2,
+      "blockedBy": [],
+      "description": "## Objetivo\nQue `npm run stations -- --check` salga 0 solo cuando cada canal (claude, codex, openrouter) tiene evidencia reciente de haber respondido, sin sondear por defecto, y que `--probe` obtenga esa evidencia con un `pong` real por canal.\n\n## Contexto\nDecisiones D1, D4, D6–D10, D12, D13 en `docs/specs/stations-check-proveedores-y-review.md` (grill en terminal + grill cruzado Codex Grill ↔ Claude Terminal, `docs/grill/stations-check-gpt/verdict.md`). Hoy `providers.status()` devuelve solo la ruta del binario y `failures()` marca fallo solo cuando falta: \"instalado\" se vendía como \"responde\".\n\n## Alcance\n- `providers/index.mjs`: `health(env, { probe, evidenceDir, stateFile, exec, ask, now })` → por canal `{ bin, status: ok|quota|down|unprobed, until?, latency?, why?, at? }` más `ignored`. Detectores inmediatos (sin binario, `claude auth status` ≠ 0, sin clave OpenRouter) → `down`; cuando pasan no deciden. Evidencia: JSON de `~/.claude/adversarial-reviews/` con `agent` = canal (cualquier repo) + registro del canal en `~/.local/state/jarviis/health.json`; instante = timestamp del nombre de archivo, si no `mtime`; el más reciente dentro de 7 días manda; empate → fallo; corruptos/sin agent/fecha futura → `ignored`. `ok:true`/`status:ok` → `ok`; \"try again at <fecha>\" futura (zona local) → `quota` con `until`; otro fallo → `down` con `why`; nada → `unprobed`.\n- `probe: true`: `ask()` \"pong\" a los tres en paralelo, timeout 30 s por canal; resultado a `stateFile` (escritura atómica tmp+rename; ausente/corrupto = sin evidencia, nunca error).\n- `ask()` escribe la evidencia de salud del canal al terminar cualquier uso real (D12).\n- `providers/evidence.mjs`: `readEvidence({ evidenceDir }) → { records: [{ at, agent, ok, why, to, verdict, file }], ignored }` con las reglas de D9 (instante desde el nombre de archivo, `mtime` de respaldo, corruptos/sin agent/fecha futura a `ignored`). Es la API que `reviewDebt()` importa en el issue siguiente: una sola copia de D9.\n- README, sección de `npm run stations`: `--probe`, los estados `ok · sin cuota hasta · down · sin sondear`, la ventana de 7 días y que la primera vez `--check` sale rojo hasta sondear.\n- `stations.mjs`: `collectStations` usa `health()`; fila `proveedor: codex ok (fecha, 1.8 s)` / `sin cuota hasta …` / `sin sondear` / `down: <why>`; pie por canal (+ `ignorados: n`); `failures()` cuenta `quota`, `down` y `unprobed`; flag `--probe`; `--json` con `providers`.\n- Tests sin red: fixtures de evidencia (ok reciente, cuota futura, cuota pasada, fallo sin fecha, corrupto, sin agent, fecha futura, otro repo, empate, nombre sin timestamp), `stateFile` ausente/corrupto/válido, `exec` falso, `ask` inyectado (responde/falla/timeout), `now` inyectado, `failures()` por estado, render.\n\n## Criterios de aceptación\n- `npm test` en verde.\n- En esta máquina: `npm run stations -- --check; echo $?` → 1 con \"sin evidencia reciente\" antes de sondear; `npm run stations -- --probe` imprime los tres resultados y deja `health.json`; el `--check` siguiente sale 0 (o 1 con `codex sin cuota hasta …`).\n- `--json` trae `providers.codex.status` y `providers.ignored`.\n- `renderStations` sigue sin contener \"Siguiente paso\".\n- El README menciona `--probe` y `sin sondear`.\n\n## Dependencias\nNinguna.",
+      "subtasks": [],
+      "key": "JAR-14",
+      "url": "https://linear.app/jarviis-app/issue/JAR-14/anadir-providershealth-y-probe-para-que-stations-check-sea-verde-solo"
+    },
+    {
+      "ref": "debt",
+      "title": "Mostrar en stations la deuda de review adversarial con reviewDebt()",
+      "labels": [
+        "Feature"
+      ],
+      "priority": 3,
+      "blockedBy": [
+        "health"
+      ],
+      "description": "## Objetivo\nQue `npm run stations` muestre el rango de commits de este repo sin review adversarial y el comando para saldarlo, sin que eso cambie el exit de `--check`.\n\n## Contexto\nDecisiones D2, D3, D5, D11 en `docs/specs/stations-check-proveedores-y-review.md`. Nueve PRs de `jarviis` entraron sin review por cuota de Codex y ningún comando lo decía. `/code-review` no deja evidencia y por eso no cuenta.\n\n## Alcance\n- `stations.mjs`: `reviewDebt({ cwd, evidenceDir, git })` → `{ lastReviewed: [{ sha, at }], pending: [sha…], command, note }`, usando `readEvidence()` de `providers/evidence.mjs`. Elegible: evidencia `ok:true` con `verdict` cuyo `to` es ancestro de `HEAD`; un `to` que dejó de ser ancestro (rebase/squash) no cuenta. **La deuda es un conjunto, no un checkpoint** (D11): `pending` = `git rev-list HEAD ^to1 ^to2 …` con todos los elegibles como exclusiones (dos ramas revisadas por separado y fusionadas dan como deuda solo el merge y lo posterior). `command`: con un elegible, `/adversarial-review <to7>..HEAD`; con varios, `<merge-base>..HEAD` (sobreinclusivo, nunca subinclusivo, con nota `incluye N ya revisados`); si `git merge-base --all` da varias bases, se elige de forma determinista (la de fecha de commit más antigua) y no altera `pending`.\n- Sección \"Review pendiente\" bajo \"Arreglos\": `N commits sin review adversarial desde <sha7> (<fecha>): <command>` | `al día (último review <sha7>, <fecha>)` | `sin evidencia de review en este repo`, más la nota sobre `/code-review`. `--json` con `review`. `failures()` no cambia.\n- Tests con repo git temporal: cuatro commits y evidencia con `to` en el segundo → 2 pendientes y comando; dos ramas revisadas por separado y fusionadas → `pending` = merge y posteriores, comando desde el merge-base con nota; `to` no ancestro → no cuenta; sin evidencia; `ok:false` no cuenta.\n- README, sección de `npm run stations`: \"Review pendiente\" es informativa, no cambia el exit y no cuenta `/code-review`. `docs/plans/fabrica.md`: fila con la fase y el commit al cerrar.\n\n## Criterios de aceptación\n- `npm test` en verde.\n- El README menciona \"Review pendiente\" y `docs/plans/fabrica.md` tiene la fila.\n- En `jarviis` hoy, \"Review pendiente\" muestra los commits desde la última evidencia `ok:true` real (o \"sin evidencia\") con el comando; `--check` mantiene su exit.\n\n## Dependencias\nBloqueado por el issue de salud: importa `readEvidence()` de `providers/evidence.mjs` (API compartida, decidido en el quiz cruzado; una sola copia de D9).",
+      "subtasks": [],
+      "key": "JAR-15",
+      "url": "https://linear.app/jarviis-app/issue/JAR-15/mostrar-en-stations-la-deuda-de-review-adversarial-con-reviewdebt"
+    }
+  ]
+}
