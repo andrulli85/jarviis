@@ -14,24 +14,18 @@ tres piezas externas que ya están en el día a día.
 
 ## Línea de producción
 
-Cada estación recibe un artefacto y produce el siguiente. El wayfinder es la
-primera estación y a la vez el mapa de todas las demás.
-
-| # | Estación | Entrada → Salida | Skill | Estado |
-|---|---|---|---|---|
-| 0 | Intake (wayfinder) | idea en texto libre → ruta (estaciones a recorrer, preguntas abiertas) | `wayfinder` | existe (`skills/wayfinder`) |
-| 1 | Shape | idea → spec interrogada | `buzz-kickoff` / `grilling` | existe |
-| 2 | Slice | spec → issues en Linear con dependencias | `to-tickets-linear` | en construcción (`skills/to-tickets-linear`, fork de `to-tickets-jira`) |
-| 3 | Build | issue → workspace Conductor en la rama del issue → PR | `build-kickoff`, `tdd`, `git-conventions` | existe (`skills/build-kickoff`) |
-| 4 | Review | PR → hallazgos verificados | `adversarial-review`, `code-review` | existe |
-| 5 | Ship / Learn | PR mergeado → learning en el vault | `learnings`, `keeper` | existe |
+Cinco estaciones (Shape, Slice, Build, Review, Ship / Learn) en las que cada
+una recibe un artefacto y produce el siguiente; el wayfinder es la puerta de
+entrada y el mapa de las demás. El mapa completo (transiciones, ramas,
+entradas y recorridos ya hechos) está en [`docs/flows.md`](docs/flows.md);
+el estado de cada estación en esta máquina lo imprime `npm run stations`.
 
 Regla: el wayfinder **enruta, no ejecuta**. Si una estación está `manual`,
 el wayfinder dice exactamente qué hacer a mano. Cuando la estación gana skill,
-solo cambia `skills/wayfinder/stations.json`, que es la fuente de esta tabla;
-el estado real (`existe` / `manual` / `sin enlazar` / `otra copia` /
-`por construir`) lo calcula el wayfinder mirando el disco en cada corrida, no
-esta copia.
+solo cambia `skills/wayfinder/stations.json`: de ahí se genera el mapa
+(`npm run flows`) y de ahí lee el wayfinder; el estado real (`existe` /
+`manual` / `sin enlazar` / `otra copia` / `por construir`) lo calcula mirando
+el disco en cada corrida, no lo guarda ningún documento.
 
 ## Skills de la fábrica
 

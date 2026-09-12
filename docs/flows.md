@@ -46,4 +46,6 @@ flowchart LR
 | Trabajo | Estado | Issues | Grill | Learnings |
 |---|---|---|---|---|
 | [Script npm run stations que imprime la tabla de estaciones con su estado real](specs/anadir-un-script-npm-run.md) | shipped | JAR-5, JAR-8, JAR-6, JAR-7 | [grill](grill/npm-run-stations/verdict.md) | [2026-09-12-npm-11-no-longer-prints-npm-error-on-script-exit](vault/learnings/2026-09-12-npm-11-no-longer-prints-npm-error-on-script-exit.md) |
+| [docs/flows.md: el mapa end to end de la fábrica, generado desde stations.json](specs/flujos-end-to-end.md) | sliced | JAR-10, JAR-11 | — | — |
+| [El wayfinder enruta con las transiciones de stations.json](specs/wayfinder-enruta-con-transitions.md) | sliced | JAR-9 | — | — |
 
