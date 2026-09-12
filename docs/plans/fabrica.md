@@ -13,6 +13,7 @@ se marca aquí con la fecha y el commit; el README no lleva estado.
 | 5 | Workspace desde issue | `skills/build-kickoff/`: deep link `conductor://linear_id=<clave>&prompt=…` (workspace en la rama del issue) o `conductor://prompt=…&path=<repo>` sin Linear conectado. 7 tests y 4 casos headless | hecha 2026-09-11 (`76ae16a`) |
 | 6 | `docs/flows.md` | Mapa end to end generado desde `stations.json` (`transitions`, `npm run flows`, golden en `npm test`); el README enlaza al mapa y a `npm run stations` en vez de copiar la tabla | hecha 2026-09-12 (JAR-10 `5ad5ebb`, JAR-11 en esta PR) |
 | 7 | Ramas por spec | `build-kickoff` manda renombrar la rama a `<slug de la spec>/<clave>-<título>` (lee título y `Spec:` del issue en Linear cuando hay clave); convención en el README | hecha 2026-09-12 (en esta PR) |
+| 8 | Deuda de Review en `stations` | `reviewDebt()` sobre `readEvidence()`: conjunto de `to` revisados que siguen siendo ancestro de `HEAD`, `pending` por `git rev-list HEAD ^to…`, comando desde el `to` o el merge-base; sección "Review pendiente" y `--json review`, sin tocar el exit (JAR-15, D2, D3, D5, D11) | hecha 2026-09-12 (JAR-15, en esta PR) |
 
 ## Regla de cierre de fase
 

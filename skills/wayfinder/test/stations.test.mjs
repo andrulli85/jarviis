@@ -140,3 +140,43 @@ test("renderStations es la tabla del wayfinder sin Siguiente paso", async () => 
   assert.equal(md.split("\n").filter((l) => /^\| \d \|/.test(l)).length, 5);
   assert.ok(md.split("\n").includes(stationRow(r.stations[2], { provider: () => " · proveedor: claude ok (2026-09-12, 1.8 s)" })), "la fila de Build es la de stationRow con la celda de salud");
 });
+
+/* ---------------------------------------------------- Review pendiente --- */
+
+/* La deuda se inyecta ya calculada (reviewDebt() tiene sus propios tests
+   con repos git reales en review-debt.test.mjs): aquí se prueba qué hace
+   stations con cada forma. */
+const NOTE = "/code-review no deja evidencia y no cuenta";
+const SHA = (n) => `${n}`.repeat(40);
+
+test("Review pendiente con deuda: N commits desde el último review, el comando y la nota; va bajo Arreglos, en --json como review y no toca failures", async () => {
+  const review = { lastReviewed: [{ sha: SHA("a"), at: "2026-09-12T13:53:19-03:00" }, { sha: SHA("b"), at: "2026-09-11T09:00:00-03:00" }], pending: [SHA("c"), SHA("d")], command: `/adversarial-review ${"9".repeat(7)}..HEAD`, note: `${NOTE}; incluye 3 ya revisados` };
+  const health = { ...HEALTHY, codex: { bin: "/b/codex", status: "unprobed" } };
+  const r = await collectStations(world({ health, review }));
+  assert.deepEqual(r.review, review);
+  assert.deepEqual(failures(r), ["codex: sin evidencia reciente (7 d); corre npm run stations -- --probe"], "la deuda de Review no es un fallo");
+  const md = renderStations(r);
+  assert.ok(md.indexOf("## Arreglos") < md.indexOf("## Review pendiente"), "Review pendiente va bajo Arreglos");
+  assert.match(md, /^2 commits sin review adversarial desde aaaaaaa \(2026-09-12\): `\/adversarial-review 9999999\.\.HEAD`$/m);
+  assert.match(md, /^\/code-review no deja evidencia y no cuenta; incluye 3 ya revisados$/m);
+});
+
+test("Review pendiente al día y sin evidencia; un solo commit va en singular", async () => {
+  const r = await collectStations(world({ review: { lastReviewed: [{ sha: SHA("a"), at: "2026-09-12T13:53:19-03:00" }], pending: [], command: null, note: NOTE } }));
+  const md = renderStations(r);
+  assert.match(md, /^## Review pendiente$/m);
+  assert.match(md, /^al día \(último review aaaaaaa, 2026-09-12\)$/m);
+  assert.match(md, /^\/code-review no deja evidencia y no cuenta$/m);
+  assert.deepEqual(failures(r), []);
+
+  const none = renderStations(await collectStations(world({ review: { lastReviewed: [], pending: [], command: null, note: NOTE } })));
+  assert.match(none, /^sin evidencia de review en este repo$/m);
+
+  const one = renderStations(await collectStations(world({ review: { lastReviewed: [{ sha: SHA("a"), at: "2026-09-12T13:53:19-03:00" }], pending: [SHA("c")], command: "/adversarial-review aaaaaaa..HEAD", note: NOTE } })));
+  assert.match(one, /^1 commit sin review adversarial desde aaaaaaa \(2026-09-12\): `\/adversarial-review aaaaaaa\.\.HEAD`$/m);
+});
+
+test("collectStations calcula la deuda con reviewDebt sobre cwd y evidenceDir: sin evidencia en el mundo falso sale sin evidencia", async () => {
+  const r = await collectStations(world());
+  assert.deepEqual(r.review, { lastReviewed: [], pending: [], command: null, note: NOTE });
+});

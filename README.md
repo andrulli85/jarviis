@@ -61,9 +61,11 @@ su latencia), `sin cuota hasta <fecha>` (el proveedor dijo cuándo volver a
 intentar), `down: <porqué>` (sin binario, `claude auth status` en rojo, sin
 clave de OpenRouter, o el último intento falló sin fecha) y `sin sondear`
 (nada en la ventana). La evidencia sale de dos sitios: los JSON que deja
-`adversarial-review` en `~/.claude/adversarial-reviews/` (de cualquier
-repo; los que no parsean, no traen `agent` o tienen fecha futura se
-cuentan como `ignorados`) y `~/.local/state/jarviis/health.json`, donde
+`adversarial-review` donde los escribe (`CE_REVIEW_DIR`, si no
+`$ANDY_TOOLKIT_STATE_DIR/adversarial-reviews`, si no
+`~/.claude/adversarial-reviews/`; de cualquier repo; los que no parsean,
+no traen `agent` o tienen fecha futura se cuentan como `ignorados`) y
+`~/.local/state/jarviis/health.json`, donde
 cada uso real por `providers.ask()` deja su resultado al terminar. El más
 reciente manda; en empate gana el fallo. `--check` cuenta como fallo
 `sin cuota`, `down` y `sin sondear`: **la primera vez sale rojo** hasta
@@ -71,6 +73,19 @@ sondear. `npm run stations -- --probe` manda un `pong` a los tres canales
 en paralelo (30 s de techo por canal, una llamada por canal), escribe
 `health.json` y sale 1 si alguno no respondió; sin `--probe` el comando no
 gasta ni escribe nada.
+
+Bajo "Arreglos" va "Review pendiente": qué commits de **este repo** no han
+pasado por `adversarial-review` y el comando que los salda
+(`N commits sin review adversarial desde <sha7> (<fecha>): /adversarial-review
+<sha7>..HEAD`, `al día (último review …)` o `sin evidencia de review en este
+repo`). Cuenta como revisado cada `to` de una evidencia `ok:true` con
+veredicto que siga siendo ancestro de `HEAD` (un `to` que dejó de serlo por
+rebase o squash no cuenta); la deuda es el conjunto de commits que ningún
+`to` revisado alcanza, así que dos ramas revisadas por separado y fusionadas
+deben solo el merge y lo posterior, y el comando parte del merge-base (nunca
+deja fuera un pendiente; la nota dice cuántos ya revisados arrastra). Es
+**informativa**: no cambia el exit de `--check`. `/code-review` no deja
+evidencia y no cuenta; `--json` lo trae como `review`.
 
 ## Proveedores
 

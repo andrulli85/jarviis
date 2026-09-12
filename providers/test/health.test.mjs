@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { health } from "../index.mjs";
+import { health, defaultEvidenceDir } from "../index.mjs";
 import { neutralEnv, fakeBin } from "./helpers.mjs";
 
 /* Nada de esto toca la máquina: binarios falsos, clave de mentira,
@@ -333,4 +333,15 @@ test("el timeout del sondeo corta la petición real a OpenRouter, no solo deja d
     const at = await Promise.race([gone, new Promise((r) => setTimeout(() => r(null), 2000))]);
     assert.ok(at && at - t0 < 1500, "la conexión se cerró al vencer el timeout");
   } finally { await stub.close(); }
+});
+
+/* La evidencia se lee de donde adversarial-review la escribe: CE_REVIEW_DIR,
+   si no $ANDY_TOOLKIT_STATE_DIR/adversarial-reviews, si no
+   ~/.claude/adversarial-reviews (tooled-review.mjs, misma precedencia). Con
+   una de las dos primeras puesta, leer la tercera es no ver nada. */
+test("defaultEvidenceDir sigue la precedencia del escritor: CE_REVIEW_DIR, ANDY_TOOLKIT_STATE_DIR, HOME", () => {
+  assert.equal(defaultEvidenceDir({ HOME: "/h" }), "/h/.claude/adversarial-reviews");
+  assert.equal(defaultEvidenceDir({ HOME: "/h", ANDY_TOOLKIT_STATE_DIR: "/state" }), "/state/adversarial-reviews");
+  assert.equal(defaultEvidenceDir({ HOME: "/h", ANDY_TOOLKIT_STATE_DIR: "/state", CE_REVIEW_DIR: "/reviews" }), "/reviews");
+  assert.equal(defaultEvidenceDir({ HOME: "/h", CE_REVIEW_DIR: "", ANDY_TOOLKIT_STATE_DIR: "" }), "/h/.claude/adversarial-reviews", "vacía es como ausente, igual que en el escritor");
 });

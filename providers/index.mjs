@@ -179,7 +179,13 @@ export function status(env = process.env) {
    `ask` para el sondeo, `now` para el reloj, y las dos rutas. */
 export const HEALTH_CHANNELS = ["claude", "codex", "openrouter"];
 
-export function defaultEvidenceDir(env = process.env) { return join(env.HOME || homedir(), ".claude", "adversarial-reviews"); }
+/* Donde adversarial-review escribe, con su misma precedencia
+   (tooled-review.mjs): CE_REVIEW_DIR, si no $ANDY_TOOLKIT_STATE_DIR/
+   adversarial-reviews, si no ~/.claude/adversarial-reviews. Leer otra ruta
+   que la escrita es no ver la evidencia que sí existe. */
+export function defaultEvidenceDir(env = process.env) {
+  return env.CE_REVIEW_DIR || join(env.ANDY_TOOLKIT_STATE_DIR || join(env.HOME || homedir(), ".claude"), "adversarial-reviews");
+}
 export function defaultStateFile(env = process.env) {
   return env.JARVIIS_STATE_FILE || join(env.HOME || homedir(), ".local", "state", "jarviis", "health.json");
 }
