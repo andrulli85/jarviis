@@ -403,3 +403,10 @@ test("las secciones nuevas van antes de las preguntas abiertas", () => {
   assert.ok(md.indexOf("## Si te sales del camino") < md.indexOf("## Preguntas abiertas"));
   assert.ok(md.indexOf("## Preguntas abiertas") < md.indexOf("## Siguiente paso"));
 });
+
+test("un ciclo en el camino feliz o dos transiciones sin when son stations.json roto, con el nombre de la estación", () => {
+  const ciclo = [TRES[0], { ...TRES[1], transitions: [{ to: "a", command: "/a" }] }, TRES[2]];
+  assert.throws(() => path("a", ciclo), (e) => /\bB\b/.test(e.message) && /ciclo/.test(e.message));
+  const dos = [{ ...TRES[0], transitions: [{ to: "b", command: "/b" }, { to: "c", command: "/c" }] }, TRES[1], TRES[2]];
+  assert.throws(() => path("a", dos), (e) => /\bA\b/.test(e.message) && /2 transiciones sin when/.test(e.message));
+});

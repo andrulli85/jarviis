@@ -182,21 +182,27 @@ export function stationStatus(s, w) {
    comando de la transición que lo alcanza. `fill` rellena los placeholders
    con lo que la entrada sabe; lo que no se sabe queda visible.
 
-   Una estación intermedia sin transición feliz no acorta la ruta: es
-   stations.json roto, y se dice con nombre. */
+   Una estación intermedia sin transición feliz no acorta la ruta, dos
+   transiciones felices no eligen la primera, y un ciclo no da vueltas: las
+   tres son stations.json roto, y se dicen con nombre. */
 export function path(entry, stations = STATIONS, fill = (t) => t) {
   const byId = new Map(stations.map((s) => [s.id, s]));
   const first = byId.get(entry);
   if (!first) throw new Error(`estación de entrada desconocida: ${entry}`);
   const steps = [{ station: first.id, name: first.name, command: fill(first.command) }];
+  const seen = new Set([first.id]);
   let s = first;
   for (;;) {
-    const happy = (s.transitions || []).find((t) => !t.when);
-    if (!happy) throw new Error(`la estación ${s.name} no tiene transición sin when: stations.json está roto`);
-    if (happy.to === "end" || happy.to === "outside") return steps;
-    const to = byId.get(happy.to);
-    if (!to) throw new Error(`la estación ${s.name} transiciona a "${happy.to}", que no es una estación ni end/outside`);
-    steps.push({ station: to.id, name: to.name, command: fill(happy.command) });
+    const happy = (s.transitions || []).filter((t) => !t.when);
+    if (happy.length === 0) throw new Error(`la estación ${s.name} no tiene transición sin when: stations.json está roto`);
+    if (happy.length > 1) throw new Error(`la estación ${s.name} tiene ${happy.length} transiciones sin when y el camino feliz es una sola: stations.json está roto`);
+    const [t] = happy;
+    if (t.to === "end" || t.to === "outside") return steps;
+    const to = byId.get(t.to);
+    if (!to) throw new Error(`la estación ${s.name} transiciona a "${t.to}", que no es una estación ni end/outside`);
+    if (seen.has(to.id)) throw new Error(`la estación ${s.name} vuelve a ${to.name} por el camino feliz: ciclo en stations.json`);
+    seen.add(to.id);
+    steps.push({ station: to.id, name: to.name, command: fill(t.command) });
     s = to;
   }
 }
