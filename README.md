@@ -61,9 +61,11 @@ su latencia), `sin cuota hasta <fecha>` (el proveedor dijo cuándo volver a
 intentar), `down: <porqué>` (sin binario, `claude auth status` en rojo, sin
 clave de OpenRouter, o el último intento falló sin fecha) y `sin sondear`
 (nada en la ventana). La evidencia sale de dos sitios: los JSON que deja
-`adversarial-review` en `~/.claude/adversarial-reviews/` (de cualquier
-repo; los que no parsean, no traen `agent` o tienen fecha futura se
-cuentan como `ignorados`) y `~/.local/state/jarviis/health.json`, donde
+`adversarial-review` donde los escribe (`CE_REVIEW_DIR`, si no
+`$ANDY_TOOLKIT_STATE_DIR/adversarial-reviews`, si no
+`~/.claude/adversarial-reviews/`; de cualquier repo; los que no parsean,
+no traen `agent` o tienen fecha futura se cuentan como `ignorados`) y
+`~/.local/state/jarviis/health.json`, donde
 cada uso real por `providers.ask()` deja su resultado al terminar. El más
 reciente manda; en empate gana el fallo. `--check` cuenta como fallo
 `sin cuota`, `down` y `sin sondear`: **la primera vez sale rojo** hasta

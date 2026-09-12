@@ -74,7 +74,7 @@ function gitIn(cwd) {
    nunca subinclusivo, y la nota dice cuántos ya revisados arrastra).
 
    → { lastReviewed: [{ sha, at }], pending: [sha…], command, note } */
-export function reviewDebt({ cwd = process.cwd(), evidenceDir = defaultEvidenceDir(), git } = {}) {
+export function reviewDebt({ cwd = process.cwd(), evidenceDir = defaultEvidenceDir(process.env), git } = {}) {
   git ||= gitIn(cwd);
   const { records } = readEvidence({ evidenceDir });
   const byTo = new Map();
