@@ -208,6 +208,14 @@ Con el informe `ok:true`, dos escrituras fuera de Linear y ninguna más:
   `issue: [JAR-12, JAR-13, …]` (las claves de primer nivel, no las
   subtareas) y `status: idea` a `status: sliced`.
 
+**La PR que publica el borrador y la spec no lleva claves en el título ni
+en el cuerpo.** La integración de Linear con GitHub enlaza cualquier PR que
+mencione una clave y la pasa a Done al mergear: el 2026-09-12 la PR de docs
+"Slice de stations --check: JAR-14, JAR-15" cerró los dos issues sin una
+línea de código. Las claves van en el cuerpo del commit si hace falta
+trazarlas, o en la descripción como texto sin la forma `JAR-n` (por ejemplo
+"los dos issues de stations --check"); solo la PR de Build las nombra.
+
 Reporta las claves con sus aristas de bloqueo y las URLs, para que el usuario
 abra el tablero y vea la forma. Termina con el siguiente comando de la
 fábrica para la primera clave: `/wayfinder JAR-12`.
