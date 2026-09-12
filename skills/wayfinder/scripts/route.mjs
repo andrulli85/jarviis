@@ -11,6 +11,7 @@
    No ejecuta ninguna estación ni escribe nada. Imprime. */
 
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -78,7 +79,20 @@ export function slugify(text, max = 5) {
    fuera de la fábrica (un enlace a otra copia, o una copia suelta). Es
    invocable, así que no bloquea, pero no es la que se mantiene aquí: se da
    el `ln -sfn` que la reapunta. */
-export const FACTORY_SKILLS = join(here, "..", "..");
+export const FACTORY_SKILLS = factorySkillsDir(here);
+
+/* skills/ del checkout principal, no del checkout desde el que corre este
+   archivo: desde un worktree (Conductor) `here/../..` sería el skills/ del
+   worktree, y toda skill enlazada al principal saldría "otra copia" con un
+   `ln -sfn` a un directorio que desaparece al cerrar el workspace. El
+   git-common-dir es `<principal>/.git` desde cualquier worktree; sin git
+   alrededor, o sin `git`, se queda con lo que hay. */
+function factorySkillsDir(from) {
+  try {
+    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: from, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return join(dirname(common), "skills");
+  } catch { return join(from, "..", ".."); }
+}
 export function findSkill(name, { skillsDir, pluginsDir, cwd, factoryDir = FACTORY_SKILLS }) {
   const personal = join(skillsDir, name, "SKILL.md");
   const factory = join(factoryDir, name, "SKILL.md");

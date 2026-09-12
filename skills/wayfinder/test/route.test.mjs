@@ -1,8 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, mkdirSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { classify, slugify, buildRoute, renderMarkdown, stationStatus, stationRow, STATIONS } from "../scripts/route.mjs";
 
 /* ------------------------------------------------------------ classify --- */
@@ -265,4 +267,48 @@ test("stationRow es la fila de la tabla que renderMarkdown imprime", () => {
   const row = stationRow(r.stations[0]);
   assert.equal(row, "| 3 | Build | issue → workspace de Conductor en la rama del issue → PR que referencia la clave | `build-kickoff`, `tdd`, `git-conventions` | existe · proveedor: claude |");
   assert.ok(renderMarkdown(r).split("\n").includes(row));
+});
+
+/* ------------------------------------------------------ FACTORY_SKILLS --- */
+
+/* FACTORY_SKILLS sale de import.meta.url, así que la única forma de probarlo
+   desde un worktree es importar una copia del módulo que viva en uno: se
+   copia la fábrica mínima (skills/ y providers/) a un repo git temporal, se
+   añade un worktree y se importa route.mjs desde el worktree. */
+const REPO_ROOT = join(here(), "..", "..", "..");
+function here() { return dirname(fileURLToPath(import.meta.url)); }
+function fakeFactory({ git = true } = {}) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "wayfinder-factory-")));
+  const main = join(root, "main"); mkdirSync(main);
+  cpSync(join(REPO_ROOT, "skills"), join(main, "skills"), { recursive: true });
+  cpSync(join(REPO_ROOT, "providers"), join(main, "providers"), { recursive: true });
+  if (!git) return { root, main };
+  const run = (...args) => execFileSync("git", args, { cwd: main, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" } });
+  run("init", "-q", "-b", "main");
+  run("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "base");
+  const worktree = join(root, "wt");
+  run("worktree", "add", "-q", worktree);
+  cpSync(join(main, "skills"), join(worktree, "skills"), { recursive: true });
+  cpSync(join(main, "providers"), join(worktree, "providers"), { recursive: true });
+  return { root, main, worktree };
+}
+const importRoute = (dir) => import(pathToFileURL(join(dir, "skills", "wayfinder", "scripts", "route.mjs")).href);
+
+test("desde un worktree, FACTORY_SKILLS apunta al checkout principal y findSkill juzga contra él", async () => {
+  const { root, main, worktree } = fakeFactory();
+  const { FACTORY_SKILLS, findSkill } = await importRoute(worktree);
+  assert.equal(FACTORY_SKILLS, join(main, "skills"));
+  const skillsDir = join(root, "personal"); mkdirSync(skillsDir);
+  symlinkSync(join(main, "skills", "wayfinder"), join(skillsDir, "wayfinder"));
+  const w = { skillsDir, pluginsDir: join(root, "plugins"), cwd: null };
+  assert.equal(findSkill("wayfinder", w).status, "existe", "una skill enlazada al principal no es otra copia");
+  const sin = findSkill("build-kickoff", w);
+  assert.equal(sin.status, "sin enlazar");
+  assert.equal(sin.link, `ln -s ${join(main, "skills", "build-kickoff")} ${join(skillsDir, "build-kickoff")}`, "el ln apunta al principal, no al worktree");
+});
+
+test("sin .git alrededor, FACTORY_SKILLS sigue siendo here/../..", async () => {
+  const { main } = fakeFactory({ git: false });
+  const { FACTORY_SKILLS } = await importRoute(main);
+  assert.equal(FACTORY_SKILLS, join(main, "skills"));
 });
