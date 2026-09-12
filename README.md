@@ -29,8 +29,9 @@ primera estación y a la vez el mapa de todas las demás.
 Regla: el wayfinder **enruta, no ejecuta**. Si una estación está `manual`,
 el wayfinder dice exactamente qué hacer a mano. Cuando la estación gana skill,
 solo cambia `skills/wayfinder/stations.json`, que es la fuente de esta tabla;
-el estado real (`existe` / `manual` / `por construir`) lo calcula el wayfinder
-mirando el disco en cada corrida, no esta copia.
+el estado real (`existe` / `manual` / `sin enlazar` / `otra copia` /
+`por construir`) lo calcula el wayfinder mirando el disco en cada corrida, no
+esta copia.
 
 ## Skills de la fábrica
 
@@ -44,6 +45,20 @@ ln -s ~/personal/claude-toolkit/jarviis/skills/wayfinder ~/.claude/skills/wayfin
 Un enlace nuevo no aparece hasta reiniciar la sesión de Claude Code. Cada
 skill lleva `evals/evals.json` y se regresa con
 `~/.claude/skills/skill-evals/runner/run-evals.py` en un sandbox sin remoto.
+
+`npm run stations` imprime la tabla de las cinco estaciones con su estado
+real en esta máquina, sin entrada: qué skills responden y qué proveedores
+hay. `npm run stations -- --json` da lo mismo como JSON y
+`npm run stations -- --check` sale con 1 si hay algo que arreglar, para
+usarlo desde un script (bajo npm ≤ 10 ese exit 1 añade además el bloque
+`npm error` de npm; es lo esperado, no un fallo del comando). Cada estación
+está en uno de cinco estados: `existe` (responde y es la de la fábrica),
+`manual` (la estación existe pero pide un paso a mano; no es fallo),
+`sin enlazar` (está en `skills/` pero no en `~/.claude/skills`),
+`otra copia` (el enlace apunta a otra copia, no a esta fábrica) y
+`por construir` (no está en ningún sitio). Las dos que se arreglan con un
+`ln` salen listadas bajo "Arreglos" con el comando exacto; tras enlazar,
+reinicia la sesión.
 
 ## Proveedores
 

@@ -230,11 +230,17 @@ export function buildRoute(input, world = {}) {
 /* ------------------------------------------------------------- render --- */
 
 /* Una fila de la tabla de estaciones, a partir de lo que devuelve
-   stationStatus. Compartida con stations.mjs para que el formato no diverja. */
-export function stationRow(s) {
+   stationStatus. Compartida con stations.mjs para que el formato no diverja;
+   solo la celda del proveedor se puede sustituir (`provider`), porque sin
+   autor el wayfinder dice por qué no elige y stations.mjs lista las dos
+   familias. */
+export function providerCell(p) {
+  if (!p) return "";
+  return p.available ? ` · proveedor: ${p.channel}` : ` · **proveedor no disponible**: ${p.why}`;
+}
+export function stationRow(s, { provider = providerCell } = {}) {
   const skills = s.skills.map((k) => `\`${k.name}\`${k.status === "existe" ? "" : ` (${k.status})`}`).join(", ");
-  const prov = s.provider ? (s.provider.available ? ` · proveedor: ${s.provider.channel}` : ` · **proveedor no disponible**: ${s.provider.why}`) : "";
-  return `| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${prov} |`;
+  return `| ${s.n} | ${s.name} | ${s.in} → ${s.out} | ${skills} | ${s.status}${s.manual ? ` — ${s.manual}` : ""}${provider(s.provider)} |`;
 }
 
 export function renderMarkdown(r) {
