@@ -1,8 +1,8 @@
 ---
 title: "Comentarios en las cards de Linear escritos para un humano, y linear.mjs como única puerta al tablero"
-status: planned
+status: sliced
 date: 2026-09-12
-issue: null
+issue: [JAR-16, JAR-17]
 grill: docs/grill/linear-comentarios/gpt-review.md
 ---
 
