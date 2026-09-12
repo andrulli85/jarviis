@@ -141,12 +141,17 @@ completa de uno para que apruebe el contrato, no solo los títulos.
 Pregunta: ¿granularidad? ¿bloqueos reales o solo un orden que habrías
 elegido igual? ¿fusionar o partir? ¿etiquetas o prioridad?
 
-**Cada pregunta va abierta, con la alternativa concreta y su coste, y sin
-tu respuesta debajo.** "¿Fusionar 3 en 2? Lo dejé separado porque…" es un
-trámite: ya está contestada, y "publica" es la única salida cómoda. La forma
-útil es "A: tres issues (un commit cada uno, tres cierres en Linear). B: dos
-issues, con tests y README como subtarea del segundo. ¿A o B?". Si el
-usuario no elige, la corrida no sigue.
+**Cada pregunta va abierta, con las opciones y su coste, y con tu
+recomendación y el porqué; la elección es del usuario.** Dos fallos
+opuestos, ambos medidos: "¿Fusionar 3 en 2? Lo dejé separado porque…"
+(2026-09-11) es un trámite, la decisión ya está tomada y "publica" es la
+única salida cómoda; "A: dos issues. B: uno. ¿A o B?" a secas (2026-09-12)
+descarga el criterio en el usuario, que pidió la recomendación de vuelta.
+La forma útil es la de `/grilling`: "A: tres issues (un commit cada uno,
+tres cierres en Linear). B: dos issues, con tests y README como subtarea del
+segundo. ➡️ B, porque el tercero no se demuestra solo. ¿A o B?". Recomendar
+no es decidir: el borrador no cambia hasta que el usuario elige, y si no
+elige, la corrida no sigue.
 
 Itera hasta aprobación. Nada llega a Linear antes.
 
