@@ -1,6 +1,8 @@
 /* Entorno neutralizado: ningún test puede llegar a un proveedor real.
    Los binarios apuntan a rutas inexistentes, OpenRouter a un stub local que
-   cada test levanta, y la clave es de mentira. */
+   cada test levanta, y la clave es de mentira. El HOME temporal es además
+   donde `ask()` deja su evidencia de salud (D12): pásale `env` a `ask` o
+   escribirá en el health.json real. */
 import { mkdtempSync, mkdirSync, writeFileSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
