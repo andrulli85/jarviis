@@ -2,6 +2,12 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, create, DONE_GATE_EXIT } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "linear.mjs");
 
 const plan = (over = {}) => ({
   team: "JAR",
@@ -404,5 +410,87 @@ test("create: sin título o sin equipo falla antes de tocar la red; la spec va a
     assert.deepEqual(stub.state.mutations, []);
     const dry = await create({ team: "JAR", title: "x", description: "y", spec: "docs/specs/a.md" }, { env, dryRun: true });
     assert.match(dry.payloads[0].input.description, /^y\n\nSpec: `docs\/specs\/a\.md`$/);
+  });
+});
+
+/* ------------------------------------------------------------ el CLI --- */
+
+/* Los criterios de aceptación de JAR-16 están escritos como líneas de
+   comando: se prueban como líneas de comando. stdout es JSON, la causa va a
+   stderr, y ningún --dry-run escribe.
+
+   Asíncrono a propósito: el stub corre en este mismo proceso, así que un
+   execFileSync bloquearía el event loop que tiene que responderle al hijo
+   (medido: 30 s de espera hasta el timeout). `stdin` cierra la entrada del
+   hijo salvo cuando el caso la usa: sin cerrarla, hereda la del runner. */
+const execFileP = promisify(execFile);
+async function run(args, env, { input = "", ...opts } = {}) {
+  const child = execFileP("node", [script, ...args],
+    { encoding: "utf8", env: { ...process.env, HOME: "/nonexistent", LINEAR_KEY_FILE: "/nonexistent", ...env }, ...opts });
+  child.child.stdin.end(input);
+  return child;
+}
+const json = async (...args) => JSON.parse((await run(...args)).stdout);
+/* El error de execFile trae status/stdout/stderr, como el de execFileSync. */
+const fails = async (args, env, check) => {
+  await assert.rejects(run(args, env), (e) => check({ status: e.code, stdout: e.stdout, stderr: e.stderr }));
+};
+
+test("CLI comment --dry-run: renderiza el payload en JSON sin escribir; sin --dry-run comenta", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const out = await json(["comment", "JAR-15", "prueba", "--dry-run"], env);
+    assert.equal(out.dryRun, true);
+    assert.deepEqual(out.payload, { issueId: "iss-JAR-15", body: "prueba" });
+    assert.deepEqual(stub.state.mutations, []);
+    const done = await json(["comment", "JAR-15", "prueba"], env);
+    assert.equal(done.key, "JAR-15");
+    assert.ok(done.commentId);
+  });
+});
+
+test("CLI comment -: el texto llega por stdin", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    await run(["comment", "JAR-15", "-"], env, { input: "Bloqueado: espera a JAR-14.\n" });
+    assert.equal(stub.state.mutations[0].input.body, "Bloqueado: espera a JAR-14.");
+  });
+});
+
+test("CLI move a Done sale 3 con la causa en stderr y sin escribir", async () => {
+  await withStub({ states: STATES, issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    await fails(["move", "JAR-15", "Done"], env, (e) => e.status === 3 && /categoría completed.*PR/.test(e.stderr));
+    assert.deepEqual(stub.state.mutations, []);
+    const ok = await json(["move", "JAR-15", "In Progress"], env);
+    assert.equal(ok.state.name, "In Progress");
+  });
+});
+
+test("CLI create --dry-run: assigneeId del viewer y la relación con el bloqueador, sin escribir", async () => {
+  await withStub({ issues: [TODO("JAR-14")] }, async ({ env, stub }) => {
+    const out = await json(["create", "--team", "JAR", "--title", "x", "--description", "y", "--blocked-by", "JAR-14", "--dry-run"], env);
+    assert.equal(out.payloads[0].input.assigneeId, "u-1");
+    assert.deepEqual(out.relations, [{ blocker: "JAR-14", blocked: "issue" }]);
+    assert.deepEqual(stub.state.mutations, []);
+    const real = await json(["create", "--team", "JAR", "--title", "x", "--description", "-", "--label", "fabrica", "--priority", "2"], env, { input: "desde stdin" });
+    assert.equal(real.key, "JAR-1");
+    const created = stub.state.mutations.find((m) => m.op === "issueCreate").input;
+    assert.equal(created.description, "desde stdin");
+    assert.deepEqual(created.labelIds, ["lb-fabrica"]);
+    assert.equal(created.priority, 2);
+  });
+});
+
+test("CLI assign y link: JSON en stdout, idempotencia visible; un comando desconocido sale 2 con el uso", async () => {
+  await withStub({ issues: [TODO("JAR-14"), TODO("JAR-16")] }, async ({ env }) => {
+    assert.deepEqual((await json(["assign", "JAR-16", "me"], env)).assignee, { id: "u-1", name: "Andres" });
+    assert.equal((await json(["assign", "JAR-16"], env)).key, "JAR-16", "sin argumento, me");
+    assert.equal((await json(["link", "JAR-14", "blocks", "JAR-16"], env)).created, true);
+    assert.equal((await json(["link", "JAR-14", "blocks", "JAR-16"], env)).created, false);
+    await fails(["inventado"], env, (e) => e.status === 2 && /uso: .*comment.*create.*assign.*move.*link/s.test(e.stderr));
+  });
+});
+
+test("CLI: un error de datos sale 1 con la causa en stderr y nada en stdout", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env }) => {
+    await fails(["comment", "JAR-999", "x"], env, (e) => e.status === 1 && /JAR-999.*no existe/.test(e.stderr) && e.stdout === "");
   });
 });

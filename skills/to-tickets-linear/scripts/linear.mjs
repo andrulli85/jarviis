@@ -3,7 +3,15 @@
 
    node linear.mjs resolve <equipo>                  → tabla de resolución (JSON)
    node linear.mjs publish <plan.json> [--dry-run] [--resume]   → informe (JSON)
-   node linear.mjs issue <clave>                     → estado y PR adjunta (JSON)
+   node linear.mjs issue <clave>                     → estado, PR, título y spec (JSON)
+   node linear.mjs comment <clave> <texto | ->       → { key, commentId, url }
+   node linear.mjs create --team … --title … --description <texto | -> …  → { key, url }
+   node linear.mjs assign <clave> [me]               → { key, assignee }
+   node linear.mjs move <clave> <estado>             → { key, from, state }
+   node linear.mjs link <A> blocks <B>               → { blocker, blocked, created }
+
+   Es la única puerta al tablero (D7 de docs/specs/linear-comentarios-para-humanos.md):
+   ningún skill ni prompt escribe GraphQL a mano.
 
    GraphQL directo contra api.linear.app con LINEAR_API_KEY. Sin MCP: el MCP
    oficial pide OAuth en sesión interactiva, y este script tiene que correr
@@ -438,23 +446,59 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 const invokedDirectly = (() => { try { return process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
 if (invokedDirectly) {
-  const [cmd, arg, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const [cmd, ...rest] = argv;
   const out = (o) => process.stdout.write(JSON.stringify(o, null, 2) + "\n");
+  const has = (flag) => rest.includes(flag);
+  const words = rest.filter((a) => !a.startsWith("--"));
+  const USO = "uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>\n"
+    + "     comment <clave> <texto | -> | create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
+    + "     assign <clave> [me] | move <clave> <estado> | link <A> blocks <B>\n"
+    + "     todos aceptan --dry-run: renderizan el payload sin escribir";
+  /* Un texto largo (un comentario, una descripción) entra por stdin con `-`:
+     así no hay que escapar comillas ni saltos de línea en el prompt. */
+  const textOf = (arg, qué) => {
+    if (arg === "-") return readFileSync(0, "utf8").trim();
+    if (arg === undefined) throw new Error(`falta ${qué} (o \`-\` para leerlo de stdin)`);
+    return arg;
+  };
+  /* --flag valor, repetible: --label a --label b → ["a", "b"]. */
+  const flags = (name) => rest.flatMap((a, n) => (a === name && rest[n + 1] !== undefined && !rest[n + 1].startsWith("--") ? [rest[n + 1]] : []));
+  const flag = (name) => flags(name).at(-1);
+
+  const dryRun = has("--dry-run");
   try {
-    if (cmd === "resolve") out(await resolveTeam(arg));
-    else if (cmd === "issue") out(await issueState(arg));
+    if (cmd === "resolve") out(await resolveTeam(words[0]));
+    else if (cmd === "issue") out(await issueInfo(words[0]));
+    else if (cmd === "comment") out(await comment(words[0], textOf(words[1], "el texto del comentario"), { dryRun }));
+    else if (cmd === "assign") out(await assign(words[0], words[1] || "me", { dryRun }));
+    else if (cmd === "move") out(await move(words[0], words.slice(1).join(" "), { dryRun }));
+    else if (cmd === "link") out(await link(words[0], words[1], words[2], { dryRun }));
+    else if (cmd === "create") {
+      const priority = flag("--priority");
+      if (priority !== undefined && !/^[0-4]$/.test(priority)) throw new Error(`--priority es un entero 0-4; llegó "${priority}"`);
+      const assignee = flag("--assignee");
+      if (assignee !== undefined && assignee !== "me") throw new Error(`--assignee solo admite "me"; llegó "${assignee}"`);
+      out(await create({
+        team: flag("--team"), title: flag("--title"),
+        description: textOf(flag("--description"), "la descripción (--description)"),
+        labels: flags("--label"), blockedBy: flags("--blocked-by"), spec: flag("--spec"),
+        ...(priority === undefined ? {} : { priority: Number(priority) }),
+      }, { dryRun }));
+    }
     else if (cmd === "publish") {
-      const plan = JSON.parse(readFileSync(arg, "utf8"));
-      const r = await publish(plan, { dryRun: rest.includes("--dry-run"), resume: rest.includes("--resume") });
+      const file = words[0];
+      const plan = JSON.parse(readFileSync(file, "utf8"));
+      const r = await publish(plan, { dryRun, resume: has("--resume") });
       /* Con claves aterrizadas, el borrador se reescribe con ellas; a mitad
          de camino también, porque lo creado hasta ahí es lo que hay que
          saber para no duplicarlo en un reintento. */
-      if (!r.dryRun && r.created.length) writeFileSync(arg, JSON.stringify(withKeys(plan, r), null, 2) + "\n");
+      if (!r.dryRun && r.created.length) writeFileSync(file, JSON.stringify(withKeys(plan, r), null, 2) + "\n");
       out(r);
       if (r.ok === false) process.exit(1);
     } else {
-      console.error("uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>");
+      console.error(USO);
       process.exit(2);
     }
-  } catch (e) { console.error(e.message); process.exit(1); }
+  } catch (e) { console.error(e.message); process.exit(e.exit || 1); }
 }
