@@ -63,6 +63,14 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    recibo vacío ("ok", "entendido", "confirmado").
 7. **Sin bucles.** Dos agentes que se mencionan sin fin no paran solos. Quien abre una
    conversación entre agentes fija un tope de rondas y lo cumple.
+8. **Avances a mitad, no solo el final.** Un turno largo publica antes de terminar. La
+   prueba, una línea: *¿lleva quien espera más de diez minutos sin nada nuevo que leer?*
+   Si la respuesta es sí, publicas un avance antes de seguir — qué va cerrado, qué falta,
+   qué sigue. No hace falta que esté todo resuelto; hace falta que se vea el progreso.
+   El motivo es de la app: en Buzz el indicador de "escribiendo" queda encendido todo el
+   turno, así que un tramo largo de silencio **se ve** y no se distingue de estar colgado.
+   Pedido por Andy el 2026-09-16, tras veinte minutos de indicador encendido con el
+   trabajo avanzando por dentro y nada publicado.
 
 ## Lo que ya está decidido y no se rediscute
 
