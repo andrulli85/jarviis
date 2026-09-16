@@ -111,3 +111,70 @@ test("CLI: sin clave sale 2 con motivo; --via path sin repo sale 1", () => {
   assert.throws(() => execFileSync("node", [script, "JAR-1", "--via", "path", "--print"], { encoding: "utf8", stdio: "pipe", cwd: t, env: { ...process.env, CONDUCTOR_ROOT_PATH: "" } }),
     (e) => e.status === 1 && /repositorio/.test(e.stderr));
 });
+
+/* D1-D6 y D9: el prompt de arranque es lo único que el agente del workspace
+   lee antes de tocar el tablero, así que lleva la regla única, los tres
+   momentos con su comando exacto y el camino por linear.mjs. Lo que no está
+   aquí no pasa: medido el 2026-09-12, un issue derivado (JAR-8) apareció sin
+   explicación porque nadie se lo había pedido al agente. */
+test("kickoffPrompt: la regla única, los tres momentos y el comando de cada uno", () => {
+  const p = kickoffPrompt({ key: "JAR-17", spec: "docs/specs/linear-comentarios-para-humanos.md" });
+  assert.match(p, /solo si Andy tomaría una decisión distinta/, "la regla única, literal");
+  assert.match(p, /linear\.mjs move JAR-17 "In Progress"/, "arranque: a In Progress por comando");
+  assert.match(p, /linear\.mjs move JAR-17 "In Review"/, "cierre: a In Review al abrir la PR");
+  assert.match(p, /linear\.mjs comment JAR-17/, "los tres momentos comentan por comando");
+  assert.match(p, /Arranque/); assert.match(p, /Cambio de plan/); assert.match(p, /Cierre/);
+  assert.match(p, /linear\.mjs create .*--blocked-by JAR-17/, "issue derivado: create con el bloqueo");
+  assert.match(p, /se cierra con esta PR/, "el cierre lo dice en palabras");
+  assert.match(p, /Slack/, "el tono");
+  /* D2 (GPT quitó rama y workspace del arranque): eso ya lo muestra Conductor. */
+  const arranque = p.split("\n").find((l) => /^1\./.test(l));
+  assert.ok(arranque, "el arranque es el momento 1");
+  assert.doesNotMatch(arranque, /rama|workspace/i, "el arranque no nombra rama ni workspace");
+});
+
+/* Negativo (D7): el prompt no pide una petición a mano por ninguna vía, y no
+   nombra ni la tecnología ni la clave de API. Nombrarlas ya es media
+   invitación a saltarse la única puerta, así que la prohibición se escribe
+   sin ellas: "nunca una petición a mano contra la API de Linear". El criterio
+   de JAR-17 es literal: el prompt no contiene `curl` ni `graphql`. */
+test("kickoffPrompt: nunca pide una petición a mano, y no nombra la tecnología", () => {
+  const p = kickoffPrompt({ key: "JAR-17", spec: "docs/specs/x.md", title: "Un título" });
+  for (const prohibido of [/curl/i, /graphql/i, /api\.linear\.app/, /mutation /i, /LINEAR_API_KEY/]) {
+    assert.doesNotMatch(p, prohibido, `el prompt no puede nombrar ${prohibido}`);
+  }
+  assert.match(p, /nunca una petición a mano/i, "y lo prohíbe en palabras");
+});
+
+/* El comando tiene que ser ejecutable desde cualquier workspace, no solo
+   desde este repo: la skill personal está enlazada en ~/.claude/skills. */
+test("kickoffPrompt: el comando del tablero apunta a la skill personal y el equipo sale de la clave", () => {
+  const p = kickoffPrompt({ key: "JAR-17", spec: "docs/specs/x.md" });
+  assert.match(p, /~\/\.claude\/skills\/to-tickets-linear\/scripts\/linear\.mjs/);
+  assert.match(p, /--team JAR\b/);
+  assert.match(kickoffPrompt({ key: "OPS-3" }), /--team OPS\b/);
+});
+
+/* Los comentarios y los move los pide este prompt: si la última línea los
+   deja bajo "no publiques nada sin decirlo", el agente se para a preguntar y
+   la card se queda muda. Medido en este mismo workspace el 2026-09-15. */
+test("kickoffPrompt: el permiso pendiente es git, no el tablero", () => {
+  const p = kickoffPrompt({ key: "JAR-17", spec: "docs/specs/x.md" });
+  assert.match(p, /push y PR cuando lo pida/);
+  assert.match(p, /no necesitan permiso aparte/);
+});
+
+/* El criterio de aceptación de JAR-17, tal cual: lo que llega al agente es el
+   prompt DECODIFICADO de la URL, no el que devuelve la función. Un carácter
+   mal codificado (las comillas de "In Progress", los acentos) lo rompería sin
+   que ningún test de kickoffPrompt se enterara. */
+test("CLI: el prompt decodificado de la URL lleva la regla única y los dos comandos", () => {
+  const out = execFileSync("node", [script, "JAR-15", "--print"],
+    { encoding: "utf8", env: { ...process.env, LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent", HOME: "/nonexistent" } });
+  const prompt = decodeURIComponent(out.trim().split("prompt=")[1]);
+  assert.match(prompt, /solo si Andy tomaría una decisión distinta/);
+  assert.match(prompt, /linear\.mjs comment JAR-15/);
+  assert.match(prompt, /linear\.mjs move JAR-15 "In Progress"/);
+  assert.match(prompt, /linear\.mjs move JAR-15 "In Review"/);
+  assert.doesNotMatch(prompt, /curl|graphql/i);
+});

@@ -74,6 +74,35 @@ export async function fetchIssue(key, { env = process.env } = {}) {
   } catch { return {}; }
 }
 
+/* El comando del tablero, escrito para correr desde CUALQUIER workspace y no
+   solo desde el repo de la fábrica: la skill personal está enlazada en
+   ~/.claude/skills (`ln -sfn` de `npm run stations`), así que esa ruta vale en
+   el repo de cualquier producto. Un `node skills/...` relativo solo funciona
+   aquí. */
+export const LINEAR_CMD = "node ~/.claude/skills/to-tickets-linear/scripts/linear.mjs";
+
+/* Los tres momentos de comentario en la card (D1-D6 y D9 de
+   docs/specs/linear-comentarios-para-humanos.md), con el comando exacto de
+   cada uno. Van en el prompt y no en el SKILL.md de Build porque el agente
+   del workspace nuevo no lee ningún skill: lee este texto. Lo que no esté
+   aquí no pasa — el 2026-09-12 un issue derivado (JAR-8) apareció en el
+   tablero sin una línea de explicación porque nadie se la había pedido. */
+export function commentMoments(key) {
+  const team = String(key).split("-")[0].toUpperCase();
+  /* La ruta completa una vez y `linear.mjs` en cada momento: repetirla seis
+     veces hacía el prompt ilegible justo en la parte que tiene que seguirse
+     al pie de la letra. */
+  const cmd = "linear.mjs";
+  return [
+    `La card de Linear es lo único que Andy mira desde el teléfono, y la regla es una: comenta solo si Andy tomaría una decisión distinta al leerlo. Progreso, logs, lo que ya dice la PR y las dudas técnicas no se comentan. Tono: el mensaje que dejarías a un colega en Slack al salir, en español y sin tecnicismos.`,
+    `Todo lo que toque el tablero pasa por \`${cmd}\` (\`comment\`, \`move\`, \`create\`, \`link\`), que abajo va abreviado y se ejecuta \`${LINEAR_CMD} <comando>\`; con \`-\` el texto entra por stdin. Nunca una petición a mano contra la API de Linear.`,
+    `Tres momentos de comentario, y ninguno más:`,
+    `1. Arranque, ahora mismo: \`${cmd} move ${key} "In Progress"\` y \`${cmd} comment ${key} -\` con una línea de alcance y plan.`,
+    `2. Cambio de plan, cuando ocurra: una decisión que altera el alcance, una sorpresa o un bloqueo, en dos o tres frases con el porqué en palabras y el enlace a la spec o al veredicto si hay detalle. Si te bloqueas, di qué esperas y qué lo desbloquea, sin prometer plazos. Si el trabajo destapa un issue nuevo, créalo con \`${cmd} create --team ${team} --title "…" --description - --blocked-by ${key}\` y comenta en ${key} por qué nació y a qué bloquea.`,
+    `3. Cierre, al abrir la PR: \`${cmd} move ${key} "In Review"\` y \`${cmd} comment ${key} -\` con el resultado en lenguaje de usuario, el número de la PR y que se cierra con esta PR. A Done no lo mueve nadie: lo hace el merge.`,
+  ];
+}
+
 /* Lo primero que lee el agente del workspace nuevo. Dice de qué estación
    viene el trabajo y a cuál va, para que no vuelva a enrutar ni a rebanar. */
 export function kickoffPrompt({ key, spec, title }) {
@@ -88,9 +117,10 @@ export function kickoffPrompt({ key, spec, title }) {
     specLine,
     branchLine,
     `Lee el issue ${key} y la spec, y trabaja con /tdd sobre los criterios de aceptación del issue.`,
+    ...commentMoments(key),
     `La rama lleva la clave ${key}, así Linear cierra el issue al merge; el resto de /git-conventions aplica igual.`,
     `La PR referencia ${key} en la primera línea del cuerpo, para que Linear cierre el issue al merge.`,
-    `No publiques nada sin decirlo: commit local sí, push y PR cuando lo pida.`,
+    `No publiques nada sin decirlo: commit local sí, push y PR cuando lo pida. Los tres comentarios y los dos \`move\` de arriba te los pide este prompt: no necesitan permiso aparte.`,
   ].join("\n");
 }
 
