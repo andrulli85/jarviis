@@ -141,6 +141,25 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    respuesta razonable — las dos eran trabajo mío disfrazado de decisión suya.
    Pedido por Andy el 2026-09-16.
 
+13. **Una herramienta se prueba de dos formas, y cada una encuentra lo que la otra no.**
+   Una lectura adversarial encuentra **agujeros**: casos en que la herramienta no hace lo
+   que promete. Usarla para trabajar encuentra **fricciones**: casos en que sí hace lo que
+   promete, y justo por eso estorba. Las dos son obligatorias antes de dar algo por bueno.
+   La prueba, una línea: *¿he usado esto para trabajar, o sólo lo he leído y he pasado sus
+   tests?* Si la respuesta es la segunda, todavía no sabes si alguien lo va a querer usar.
+   **Una fricción se registra con el mismo cuidado que un agujero**, y con el mismo detalle:
+   comando exacto, qué estabas intentando hacer, y qué hiciste para rodearla. El rodeo es
+   el dato que importa — si para seguir trabajando tuviste que hacer algo peor que lo que
+   la herramienta bloqueó, eso no es una molestia, es la herramienta perdiendo su razón
+   de ser.
+   El dato que la motiva, del `undo-guard` el 2026-09-16: diez lecturas adversariales
+   encontraron 57 agujeros y un puñado de falsos positivos **imaginables desde el código**
+   (un operando relativo, una dirección IPv6 entre corchetes). Los dos que de verdad
+   estorban salieron de usarlo: bloquear un mensaje de chat que menciona una ruta
+   protegida, y bloquear la limpieza de un directorio temporal creado con `mktemp`. El
+   segundo obligó a dejar basura sin borrar en `/tmp`, que es peor que el comando que se
+   bloqueó.
+
 ## Lo que ya está decidido y no se rediscute
 
 - `npm run stations`: estados por estación `existe / sin enlazar / otra copia / manual /
