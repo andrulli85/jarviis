@@ -457,6 +457,41 @@ test("CLI comment -: el texto llega por stdin", async () => {
   });
 });
 
+test("CLI comment: el texto sin comillas llega entero, como en move; `-` no admite palabras detrás", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    /* Un agente que escribe la línea a mano no siempre cita el texto. Tomar
+       solo la primera palabra publicaba "empiezo" en la card de Andy y salía
+       0: una pérdida silenciosa, y justo en la superficie que él lee. */
+    const out = await json(["comment", "JAR-15", "empiezo", "con", "el", "plan", "--dry-run"], env);
+    assert.equal(out.payload.body, "empiezo con el plan");
+    assert.deepEqual(stub.state.mutations, []);
+    /* `-` es la vía recomendada y es excluyente: con palabras detrás, el
+       texto que se publicaría no es el que se escribió. */
+    await fails(["comment", "JAR-15", "-", "y", "esto"], env, (e) => e.status === 2 && /stdin/.test(e.stderr));
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
+test("CLI comment-draft: el texto sin comillas también llega entero", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const file = join(mkdtempSync(join(tmpdir(), "draft-")), "plan.json");
+    writeFileSync(file, JSON.stringify({ team: "JAR", issues: [{ ref: "a", title: "t", key: "JAR-15" }] }));
+    const out = await json(["comment-draft", file, "desglose", "validado", "en", "el", "grill", "--dry-run"], env);
+    assert.equal(out.payloads[0].payload.body, "desglose validado en el grill");
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
+test("CLI create: un posicional suelto es un error, no texto que se pierde", async () => {
+  await withStub({ issues: [] }, async ({ env, stub }) => {
+    /* `--description hola que tal` dejaba "que tal" fuera del payload sin
+       decir nada: el mismo agujero que el de comment, por el otro lado. */
+    await fails(["create", "--team", "JAR", "--title", "T", "--description", "hola", "que", "tal", "--dry-run"], env,
+      (e) => e.status === 2 && /que tal/.test(e.stderr));
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
 test("CLI move a Done sale 3 con la causa en stderr y sin escribir", async () => {
   await withStub({ states: STATES, issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
     await fails(["move", "JAR-15", "Done"], env, (e) => e.status === 3 && /categoría completed.*PR/.test(e.stderr));
