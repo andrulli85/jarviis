@@ -337,7 +337,8 @@ export async function comment(key, body, { env = process.env, dryRun = false } =
 }
 
 /* comment-draft <borrador.json> <texto | ->: el comentario de Slice (D5),
-   el mismo resumen del desglose validado en cada issue del borrador.
+   el mismo resumen del desglose validado en cada issue de primer nivel del
+   borrador.
 
    D13: no lo emite `publish`. Es un paso propio que corre después de
    `publish.ok:true` Y de mergear la PR de docs, para que el enlace al
@@ -347,6 +348,14 @@ export async function comment(key, body, { env = process.env, dryRun = false } =
    comenta los issues que no lo tienen. No hay `--resume`; reanudar es la
    única forma de correr. Un duplicado por recibo perdido se acepta (se ve en
    la card y se borra a mano); un comentario perdido, no.
+
+   **Solo el primer nivel.** Las subtareas no reciben el resumen: el porqué
+   del desglose en un hijo de checklist es el ruido que prohíbe D1 (Andy no
+   decide distinto al leerlo dos veces), y el frontmatter de la spec ya guarda
+   solo las claves de primer nivel. Pero la decisión se dice en voz alta:
+   `skippedSubtasks` nombra las que quedaron fuera, porque un informe `ok:true`
+   sobre un borrador con cards sin tocar es una mentira por omisión (hallazgo
+   del review adversarial de Codex, 2026-09-16).
 
    Pura respecto al borrador: quien le escribe los recibos es `withComments`
    y el archivo lo reescribe el CLI. */
@@ -365,6 +374,9 @@ export async function commentDraft(plan, body, { env = process.env, dryRun = fal
     dryRun, total: issues.length,
     already: issues.filter((i) => i.comment).map((i) => i.key),
     pending: pendientes.map((i) => i.key),
+    /* Vacía y no ausente: leer el informe no debe depender de saber si el
+       campo existe en esta corrida. */
+    skippedSubtasks: issues.flatMap((i) => (i.subtasks || []).map((st) => st.key).filter(Boolean)),
     commented: [],
   };
   if (dryRun) {
@@ -390,8 +402,11 @@ export async function commentDraft(plan, body, { env = process.env, dryRun = fal
 }
 
 /* El borrador con los recibos que aterrizaron, para reescribir
-   docs/tickets/<slug>.json. Gemela de `withKeys` y igual de pura: un issue
-   con `comment` ya está comentado, uno sin él todavía no. */
+   docs/tickets/<slug>.json. Igual de pura que `withKeys`, pero no su gemela:
+   `withKeys` baja a las subtareas porque cada una recibió su propia clave al
+   crearse, y aquí no hay nada que bajar — el resumen del desglose es del
+   primer nivel (ver `commentDraft`). Un issue con `comment` ya está
+   comentado, uno sin él todavía no. */
 export function withComments(plan, report) {
   const byKey = new Map((report.commented || []).map((c) => [c.key, c]));
   return {

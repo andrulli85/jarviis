@@ -515,7 +515,7 @@ const borrador = (over = {}) => ({
 });
 const RESUMEN = "2 issues en vez de 3: el tercero no se demostraba solo.\nVeredicto: docs/grill/slice-linear-comentarios/verdict.md";
 
-test("commentDraft: comenta cada issue del borrador una vez y devuelve el recibo de cada uno", async () => {
+test("commentDraft: comenta cada issue de primer nivel una vez y devuelve el recibo de cada uno", async () => {
   await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
     const r = await commentDraft(borrador(), RESUMEN, { env });
     assert.equal(r.ok, true);
@@ -567,6 +567,35 @@ test("commentDraft: un fallo a mitad para y reporta lo comentado; repetirlo con 
     assert.deepEqual(r2.already, ["JAR-16"]);
     assert.deepEqual(stub.state.mutations.filter((m) => m.op === "commentCreate").map((m) => m.input.issueId), ["iss-JAR-17"],
       "JAR-16 no recibe un segundo comentario");
+  });
+});
+
+/* Hallazgo del review adversarial de Codex (2026-09-16, pasada 1): el paso
+   dejaba las subtareas sin comentar y devolvía ok:true sin mencionarlas, así
+   que un borrador de 1 issue + 1 subtarea salía "completo" con una card sin
+   tocar. Comentar la subtarea sería lo incorrecto — el resumen del desglose
+   en un hijo de checklist es justo el ruido que prohíbe D1, y el frontmatter
+   de la spec ya guarda solo las claves de primer nivel — pero callarlo
+   también: la decisión tiene que estar en la salida. */
+test("commentDraft: las subtareas quedan fuera a propósito y el informe las nombra", async () => {
+  await withStub({ issues: [TODO("JAR-1"), TODO("JAR-2"), TODO("JAR-3")] }, async ({ env, stub }) => {
+    const conSub = { team: "JAR", issues: [
+      { ref: "padre", key: "JAR-1", subtasks: [{ title: "sub", key: "JAR-2" }, { title: "otra", key: "JAR-3" }] },
+    ] };
+    const r = await commentDraft(conSub, RESUMEN, { env });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.commented.map((c) => c.key), ["JAR-1"], "solo el primer nivel recibe el resumen");
+    assert.deepEqual(r.skippedSubtasks, ["JAR-2", "JAR-3"], "y el informe dice qué se dejó fuera");
+    assert.deepEqual(stub.state.mutations.filter((m) => m.op === "commentCreate").map((m) => m.input.issueId), ["iss-JAR-1"]);
+  });
+});
+
+/* Un borrador sin subtareas no inventa la clave: el campo va vacío, no
+   ausente, para que leer el informe no dependa de saber si existe. */
+test("commentDraft: sin subtareas, skippedSubtasks es una lista vacía", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env }) => {
+    const r = await commentDraft(borrador(), RESUMEN, { env });
+    assert.deepEqual(r.skippedSubtasks, []);
   });
 });
 
