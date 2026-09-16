@@ -215,7 +215,9 @@ node <dir>/scripts/linear.mjs issue <clave>
 ```
 
 Todos: ids resueltos en la corrida, JSON en stdout, causa en stderr,
-`--dry-run` que renderiza el payload sin escribir.
+`--dry-run` que renderiza el payload sin escribir. Cada comando declara sus
+opciones y una desconocida sale **2** sin tocar Linear: `--dry-runn` tiene que
+doler en la terminal, no en la card de Andy.
 
 - **`comment`** devuelve `{ key, commentId, url }`. Con `-` el texto entra por
   stdin: un comentario de varias frases no se escapa a mano. Qué se comenta y

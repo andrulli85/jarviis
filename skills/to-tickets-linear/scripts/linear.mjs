@@ -451,6 +451,15 @@ if (invokedDirectly) {
   const out = (o) => process.stdout.write(JSON.stringify(o, null, 2) + "\n");
   const has = (flag) => rest.includes(flag);
   const words = rest.filter((a) => !a.startsWith("--"));
+  /* Las opciones se declaran por comando y lo que no está declarado es un
+     error, no un argumento que se descarta: `--dry-runn` tiene que doler
+     aquí y no en la card de Andy (hallazgo del review adversarial). El valor
+     de una opción nunca empieza por `--`, así que todo `--x` es una opción. */
+  const OPCIONES = {
+    resolve: [], issue: [], comment: ["--dry-run"], assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
+    publish: ["--dry-run", "--resume"],
+    create: ["--dry-run", "--team", "--title", "--description", "--label", "--priority", "--blocked-by", "--assignee", "--spec"],
+  };
   const USO = "uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>\n"
     + "     comment <clave> <texto | -> | create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
     + "     assign <clave> [me] | move <clave> <estado> | link <A> blocks <B>\n"
@@ -467,12 +476,23 @@ if (invokedDirectly) {
   const flag = (name) => flags(name).at(-1);
 
   const dryRun = has("--dry-run");
+  /* stdout a un pipe se escribe en trozos, y process.exit() no espera al
+     último: el informe llegaba cortado en 65536 bytes, justo el que dice qué
+     claves nacieron. exitCode deja que Node vacíe y salga solo. */
+  const salirCon = (code) => { process.exitCode = code; };
   /* Un informe de publish (también el de create, que es publish) puede volver
      ok:false con issues ya creados: se imprime entero, la causa va a stderr y
      el exit es 1. Imprimirlo y salir 0 deja seguir a quien lo llamó sin la
      relación que pidió (hallazgo del review adversarial, 2026-09-15). */
-  const report = (r) => { out(r); if (r.ok === false) { console.error(r.why); process.exit(1); } };
+  const report = (r) => { out(r); if (r.ok === false) { console.error(r.why); salirCon(1); } };
   try {
+    const conocidas = OPCIONES[cmd];
+    const mala = conocidas && rest.find((a) => a.startsWith("--") && !conocidas.includes(a));
+    if (mala) {
+      const e = new Error(`opción desconocida ${mala} en \`${cmd}\`${conocidas.length ? `; admite ${conocidas.join(", ")}` : " (no admite opciones)"}`);
+      e.exit = 2;
+      throw e;
+    }
     if (cmd === "resolve") out(await resolveTeam(words[0]));
     else if (cmd === "issue") out(await issueInfo(words[0]));
     else if (cmd === "comment") out(await comment(words[0], textOf(words[1], "el texto del comentario"), { dryRun }));
@@ -502,7 +522,7 @@ if (invokedDirectly) {
       report(r);
     } else {
       console.error(USO);
-      process.exit(2);
+      salirCon(2);
     }
-  } catch (e) { console.error(e.message); process.exit(e.exit || 1); }
+  } catch (e) { console.error(e.message); salirCon(e.exit || 1); }
 }

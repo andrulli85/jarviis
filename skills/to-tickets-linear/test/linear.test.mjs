@@ -434,8 +434,8 @@ async function run(args, env, { input = "", ...opts } = {}) {
 }
 const json = async (...args) => JSON.parse((await run(...args)).stdout);
 /* El error de execFile trae status/stdout/stderr, como el de execFileSync. */
-const fails = async (args, env, check) => {
-  await assert.rejects(run(args, env), (e) => check({ status: e.code, stdout: e.stdout, stderr: e.stderr }));
+const fails = async (args, env, check, opts = {}) => {
+  await assert.rejects(run(args, env, opts), (e) => check({ status: e.code, stdout: e.stdout, stderr: e.stderr }));
 };
 
 test("CLI comment --dry-run: renderiza el payload en JSON sin escribir; sin --dry-run comenta", async () => {
@@ -551,5 +551,41 @@ test("CLI create y publish: un informe ok:false sale 1 con la causa en stderr, y
     await fails(["publish", file], env, (e) => e.status === 1 && /boom on IssueRelationCreate/.test(e.stderr));
     assert.ok(JSON.parse(readFileSync(file, "utf8")).issues.some((i) => i.key), "el borrador guarda lo que sí aterrizó");
     rmSync(file);
+  });
+});
+
+/* Segunda pasada del review adversarial (Codex, 2026-09-15), sobre el árbol
+   que arregló la primera: process.exit() no espera a que se vacíe stdout, y
+   a un pipe se escribe en trozos. El informe que se pierde es justo el que
+   dice qué claves nacieron, que es lo que evita duplicarlas al reintentar. */
+test("CLI: el informe de un fallo llega entero al pipe aunque sea mayor que su buffer", async () => {
+  await withStub({ failOn: "IssueRelationCreate", issues: [TODO("JAR-14")] }, async ({ env }) => {
+    const gorda = "x".repeat(120_000);   // el doble del buffer del pipe: basta para cortarlo
+    await fails(["create", "--team", "JAR", "--title", "t", "--description", "-", "--blocked-by", "JAR-14"],
+      env, (e) => {
+        assert.equal(e.status, 1);
+        const informe = JSON.parse(e.stdout);   // lanza si llegó cortado
+        assert.equal(informe.created[0].key, "JAR-1", "la clave que nació sobrevive al exit");
+        assert.equal(informe.payloads[0].input.description.length, gorda.length);
+        return true;
+      }, { input: gorda });
+  });
+});
+
+/* Misma pasada: `words` se quedaba con todo lo que no empieza por `--`, así
+   que un flag mal escrito desaparecía sin ruido. `--dry-runn` no es un
+   dry-run: era un comentario de verdad en la card de Andy. */
+test("CLI: una opción desconocida sale 2 con el uso y sin escribir, aunque se parezca a --dry-run", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    for (const mal of ["--dry-runn", "--dryrun", "--inventada"]) {
+      await fails(["comment", "JAR-15", "prueba", mal], env,
+        (e) => e.status === 2 && new RegExp(`opción desconocida ${mal}`).test(e.stderr));
+    }
+    await fails(["create", "--team", "JAR", "--title", "t", "--description", "d", "--labels", "fabrica"], env,
+      (e) => e.status === 2 && /--labels/.test(e.stderr), { input: "" });
+    assert.deepEqual(stub.state.mutations, [], "nada llegó a Linear");
+    /* Y los buenos siguen valiendo, cada uno en su comando. */
+    assert.equal((await json(["comment", "JAR-15", "prueba", "--dry-run"], env)).dryRun, true);
+    await fails(["comment", "JAR-15", "prueba", "--resume"], env, (e) => e.status === 2 && /--resume/.test(e.stderr));
   });
 });
