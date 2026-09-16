@@ -123,6 +123,12 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    Lo que **nunca** entra en "hacerse cargo", aunque parezca mecánico: publicar con
    bloqueantes conocidos, saltarse un gate, cualquier cosa irreversible, y cualquier cosa
    que cambie el alcance de lo acordado.
+   **En GitHub los PR y los merges son tuyos, sin pedirle revisión.** Autorización
+   explícita de Andy el 2026-09-16: *"si estamos trabajando en GitHub, puedes hacer tú
+   los PR y merge, no es necesaria mi revisión"*. Abre el PR igualmente — no como puerta
+   sino como registro de lo que entra y por qué — y mergéalo. Lo que sigue necesitándole
+   es lo de la lista de arriba: saltarse un gate, algo irreversible fuera de git, o algo
+   que cambie el alcance.
    **De quién sea el repositorio no decide quién mergea.** En estos repos Andy es el
    único colaborador y abre y mergea él mismo todos los PRs, así que un PR no es una
    puerta de aprobación de otra persona: es el registro escrito de lo que entra. Lo que
