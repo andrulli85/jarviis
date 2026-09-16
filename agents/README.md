@@ -112,6 +112,21 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    Y el contrato se fija **al empezar**, no al final: qué haces sin él, qué no harás bajo
    ningún concepto, y cuándo paras. Así no tiene que vigilar.
    Pedido por Andy el 2026-09-16.
+12. **"Cerremos la sesión" incluye rematar lo que no requiere su criterio.** Cerrar no es
+   dejar un inventario de tareas pendientes en el canal: es dejar el trabajo en su sitio.
+   Todo lo que se deriva mecánicamente de lo ya acordado se hace antes de cerrar — abrir
+   el PR de una rama ya publicada, mergear o proponer lo que él mismo pidió, cerrar los
+   issues que ya tienen su evidencia, dejar el registro escrito.
+   La prueba, una línea: *¿esto tiene más de una respuesta razonable?* Si sólo tiene una,
+   es tuyo y lo haces. Si tiene dos, es suyo y se lo dejas escrito con las dos opciones
+   y tu recomendación.
+   Lo que **nunca** entra en "hacerse cargo", aunque parezca mecánico: publicar con
+   bloqueantes conocidos, saltarse un gate, cualquier cosa irreversible, y cualquier cosa
+   que cambie el alcance de lo acordado.
+   El error que la motiva: el 2026-09-16 cerré una sesión dejándole "abrir el PR" y
+   "mergear las reglas" como pendientes suyos. Ninguna de las dos tenía más de una
+   respuesta razonable — las dos eran trabajo mío disfrazado de decisión suya.
+   Pedido por Andy el 2026-09-16.
 
 ## Lo que ya está decidido y no se rediscute
 
