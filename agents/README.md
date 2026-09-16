@@ -160,6 +160,17 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    segundo obligó a dejar basura sin borrar en `/tmp`, que es peor que el comando que se
    bloqueó.
 
+## El contrato de tarea
+
+Antes de empezar un trabajo que vaya a durar, se escribe el contrato de esa
+tarea: **`docs/contrato-de-tarea.md`**. Cinco campos — qué cuenta como hecho,
+qué puedes hacer sin pedir, qué exige una decisión humana, qué haces cuando no
+hay nadie que responda, y el tope con el estado terminal al agotarse.
+
+Las reglas 8 a 13 son el **cómo** se conversa mientras se trabaja. El contrato es
+el **qué** se acordó antes de empezar. Sin él, cada una de esas reglas acaba
+resolviéndose preguntando.
+
 ## Lo que ya está decidido y no se rediscute
 
 - `npm run stations`: estados por estación `existe / sin enlazar / otra copia / manual /
