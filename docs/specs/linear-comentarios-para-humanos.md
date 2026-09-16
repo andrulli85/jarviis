@@ -3,6 +3,7 @@ title: "Comentarios en las cards de Linear escritos para un humano, y linear.mjs
 status: sliced
 date: 2026-09-12
 issue: [JAR-16, JAR-17]
+learnings: [vault/learnings/2026-09-15-four-ways-a-cli-lies-about-what-it-did.md]
 grill: docs/grill/linear-comentarios/gpt-review.md
 ---
 
