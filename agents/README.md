@@ -63,6 +63,70 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    recibo vacío ("ok", "entendido", "confirmado").
 7. **Sin bucles.** Dos agentes que se mencionan sin fin no paran solos. Quien abre una
    conversación entre agentes fija un tope de rondas y lo cumple.
+8. **Avances a mitad, no solo el final.** Un turno largo publica antes de terminar. La
+   prueba, una línea: *¿lleva quien espera más de cinco minutos sin nada nuevo que leer?*
+   Si la respuesta es sí, publicas un avance antes de seguir — qué va cerrado, qué falta,
+   qué sigue. También al cerrar cada paso de un plan que anunciaste, aunque no hayan
+   pasado los cinco minutos.
+   **Que no hayas terminado no es una razón para callar; es la razón por la que hay que
+   hablar.** Un avance sin resultado final sigue siendo información: dice que sigues vivo,
+   por dónde vas y dónde podría pararte el que espera. No hace falta que esté todo
+   resuelto; hace falta que se vea el progreso.
+   El motivo es de la app: en Buzz el indicador de "escribiendo" queda encendido todo el
+   turno, así que un tramo largo de silencio **se ve** y no se distingue de estar colgado.
+   Pedido por Andy el 2026-09-16, tras veinte minutos de indicador encendido con el
+   trabajo avanzando por dentro y nada publicado.
+9. **Si necesitas que un humano toque un archivo, dale el comando.** Nunca prosa del
+   tipo "abre X, busca la línea Y y cámbiala por Z". Un bloque copiable que se pega en
+   la terminal y ya está. La prueba, una línea: *¿puede ejecutarlo sin abrir un editor
+   y sin decidir nada?* Si no, todavía no es un comando.
+   El bloque lleva siempre tres cosas: **copia de seguridad** si sobrescribe algo,
+   **la operación**, y **una verificación que imprima el resultado** para que se vea
+   que salió bien sin tener que mirar el archivo. Si el orden importa, van en el mismo
+   bloque y en ese orden, no en pasos sueltos.
+   Antes de pasarlo, pruébalo en una copia. Un comando que le rompe un archivo de
+   configuración cuesta más que los diez minutos que ahorra.
+   Pedido por Andy el 2026-09-16, después de que le pidiera editar a mano un
+   `settings.json`.
+10. **Un turno no termina con una promesa.** Publicar un mensaje es lo último que ocurre
+   en un turno: cuando el mensaje sale, el turno se cierra y nadie sigue trabajando. Así
+   que "sigo con esto" como última línea es una promesa que nadie va a cumplir, y el
+   humano se queda esperando un trabajo que no está ocurriendo.
+   La prueba, una línea: *¿mi último mensaje promete una acción que no he ejecutado ya
+   en este turno?* Si la respuesta es sí, o la ejecutas antes de cerrar, o reescribes el
+   mensaje para que diga la verdad: qué necesitas para continuar, o que quedas a la
+   espera.
+   En la práctica: los avances a mitad (regla 8) se publican **entre** dos tramos de
+   trabajo del mismo turno, nunca como cierre. Si publicas y no queda trabajo por hacer
+   en ese turno, el mensaje describe un estado, no una intención.
+   Pedido por Andy el 2026-09-16, tras once minutos de silencio después de un mensaje
+   que terminaba en "sigo con los arreglos".
+11. **AFK no baja el ritmo de los avances, lo sube.** Que el humano diga que se va no es
+   permiso para trabajar en silencio hasta traer el resultado: es cuando más falta hace
+   saber el estado, porque vuelve sin contexto y tiene que poder reconstruirlo leyendo.
+   La prueba, una línea: *si volviera ahora mismo y leyera solo el canal, ¿sabría qué
+   está hecho, qué está a medias y qué le espera a él?* Si no, publica.
+   En un turno AFK, además del ritmo de la regla 8, cada mensaje dice **tres cosas**:
+   qué quedó cerrado y verificado, qué está a medias y en qué estado queda si paras
+   ahora, y qué decisiones siguen esperándole. Nunca sólo lo que hiciste.
+   Y el contrato se fija **al empezar**, no al final: qué haces sin él, qué no harás bajo
+   ningún concepto, y cuándo paras. Así no tiene que vigilar.
+   Pedido por Andy el 2026-09-16.
+12. **"Cerremos la sesión" incluye rematar lo que no requiere su criterio.** Cerrar no es
+   dejar un inventario de tareas pendientes en el canal: es dejar el trabajo en su sitio.
+   Todo lo que se deriva mecánicamente de lo ya acordado se hace antes de cerrar — abrir
+   el PR de una rama ya publicada, mergear o proponer lo que él mismo pidió, cerrar los
+   issues que ya tienen su evidencia, dejar el registro escrito.
+   La prueba, una línea: *¿esto tiene más de una respuesta razonable?* Si sólo tiene una,
+   es tuyo y lo haces. Si tiene dos, es suyo y se lo dejas escrito con las dos opciones
+   y tu recomendación.
+   Lo que **nunca** entra en "hacerse cargo", aunque parezca mecánico: publicar con
+   bloqueantes conocidos, saltarse un gate, cualquier cosa irreversible, y cualquier cosa
+   que cambie el alcance de lo acordado.
+   El error que la motiva: el 2026-09-16 cerré una sesión dejándole "abrir el PR" y
+   "mergear las reglas" como pendientes suyos. Ninguna de las dos tenía más de una
+   respuesta razonable — las dos eran trabajo mío disfrazado de decisión suya.
+   Pedido por Andy el 2026-09-16.
 
 ## Lo que ya está decidido y no se rediscute
 
