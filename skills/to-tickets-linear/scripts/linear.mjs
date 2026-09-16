@@ -463,7 +463,7 @@ if (invokedDirectly) {
   const USO = "uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>\n"
     + "     comment <clave> <texto | -> | create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
     + "     assign <clave> [me] | move <clave> <estado> | link <A> blocks <B>\n"
-    + "     todos aceptan --dry-run: renderizan el payload sin escribir";
+    + "     los que escriben aceptan --dry-run: renderizan el payload sin escribir";
   /* Un texto largo (un comentario, una descripción) entra por stdin con `-`:
      así no hay que escapar comillas ni saltos de línea en el prompt. */
   const textOf = (arg, qué) => {
@@ -489,7 +489,7 @@ if (invokedDirectly) {
     const conocidas = OPCIONES[cmd];
     const mala = conocidas && rest.find((a) => a.startsWith("--") && !conocidas.includes(a));
     if (mala) {
-      const e = new Error(`opción desconocida ${mala} en \`${cmd}\`${conocidas.length ? `; admite ${conocidas.join(", ")}` : " (no admite opciones)"}`);
+      const e = new Error(`opción desconocida ${mala} en \`${cmd}\`${conocidas.length ? `; admite ${conocidas.join(", ")}` : ": es de solo lectura, nunca escribe, así que no admite opciones"}`);
       e.exit = 2;
       throw e;
     }

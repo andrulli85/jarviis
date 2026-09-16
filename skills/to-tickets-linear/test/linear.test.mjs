@@ -589,3 +589,17 @@ test("CLI: una opción desconocida sale 2 con el uso y sin escribir, aunque se p
     await fails(["comment", "JAR-15", "prueba", "--resume"], env, (e) => e.status === 2 && /--resume/.test(e.stderr));
   });
 });
+
+/* Tercera pasada del review adversarial (Codex, 2026-09-15): el texto de uso
+   prometía `--dry-run` en todos los comandos y el validador nuevo lo
+   rechazaba en los de lectura. Una promesa que el código desmiente es peor
+   que no hacerla: el test ata las dos, así que cambiar una rompe el otro. */
+test("CLI: los comandos de lectura no admiten --dry-run, y el uso no lo promete", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env }) => {
+    for (const cmd of [["issue", "JAR-15"], ["resolve", "JAR"]]) {
+      await fails([...cmd, "--dry-run"], env, (e) => e.status === 2 && /solo lectura/.test(e.stderr));
+      assert.ok(await run(cmd, env), `${cmd[0]} sin opciones sigue funcionando`);
+    }
+    await fails(["inventado"], env, (e) => !/todos aceptan --dry-run/.test(e.stderr));
+  });
+});
