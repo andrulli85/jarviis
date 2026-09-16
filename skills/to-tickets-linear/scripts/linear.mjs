@@ -105,6 +105,13 @@ export async function resolveTeam(words, env = process.env) {
 
 /* --------------------------------------------------------------- order --- */
 
+/* Un blockedBy con forma de clave (JAR-14) que no es ref del plan es un
+   issue que ya existe en Linear (D11: así `create --blocked-by` y un issue
+   derivado en Build cuelgan de su bloqueador real). Se resuelve por
+   identificador antes de escribir; no entra en el orden. */
+const KEY_SHAPE = /^[A-Za-z][A-Za-z0-9]{1,9}-\d+$/;
+export const isExternalKey = (ref, byRef) => !byRef.has(ref) && KEY_SHAPE.test(String(ref));
+
 /* Bloqueadores primero, para que cada relación apunte a un issue que ya
    existe. Estable: entre libres, el orden del plan. */
 export function order(issues) {
@@ -115,7 +122,7 @@ export function order(issues) {
     byRef.set(i.ref, i);
   }
   for (const i of issues) for (const b of i.blockedBy || []) {
-    if (!byRef.has(b)) throw new Error(`${i.ref} dice estar bloqueado por ${b}, que no está en el plan`);
+    if (!byRef.has(b) && !isExternalKey(b, byRef)) throw new Error(`${i.ref} dice estar bloqueado por ${b}, que no está en el plan`);
   }
   const out = [], state = new Map();
   const visit = (i, path) => {
@@ -123,7 +130,7 @@ export function order(issues) {
     if (s === "done") return;
     if (s === "visiting") throw new Error(`ciclo de bloqueos: ${[...path, i.ref].join(" → ")}`);
     state.set(i.ref, "visiting");
-    for (const b of i.blockedBy || []) visit(byRef.get(b), [...path, i.ref]);
+    for (const b of i.blockedBy || []) if (byRef.has(b)) visit(byRef.get(b), [...path, i.ref]);
     state.set(i.ref, "done");
     out.push(i);
   };
@@ -172,6 +179,12 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
   }
   const res = await resolveTeam(plan.team, env);
   const labelId = new Map(res.labels.map((l) => [l.name.toLowerCase(), l.id]));
+  const byRef = new Set(ordered.map((i) => i.ref));
+  const externalKeys = [...new Set(ordered.flatMap((i) => (i.blockedBy || []).filter((b) => isExternalKey(b, byRef))))];
+  /* Los bloqueadores externos se leen antes de la primera escritura, también
+     en dry-run: una clave que no existe es un plan inválido, no un fallo a mitad. */
+  const external = [];
+  for (const key of externalKeys) { const e = await readIssue(key, env); external.push({ key, id: e.id }); }
 
   const payloads = ordered.filter((i) => !i.key).map((i) => {
     const labelIds = (i.labels || []).map((name) => {
@@ -182,9 +195,11 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
     if (i.priority !== undefined && !(Number.isInteger(i.priority) && i.priority >= 0 && i.priority <= 4)) {
       throw new Error(`priority de ${i.ref} debe ser un entero 0-4 (0 sin prioridad, 1 urgente … 4 baja); llegó ${JSON.stringify(i.priority)}`);
     }
-    const input = { teamId: res.team.id, title: i.title, description: description(i, plan), stateId: res.backlogState.id, labelIds };
+    /* D7: todo lo que crea la fábrica sale asignado al dueño de la clave. */
+    const base = { teamId: res.team.id, stateId: res.backlogState.id, labelIds, assigneeId: res.viewer.id };
+    const input = { ...base, title: i.title, description: description(i, plan) };
     if (i.priority !== undefined) input.priority = i.priority;
-    const subtasks = (i.subtasks || []).map((s) => ({ title: s.title, input: { teamId: res.team.id, title: s.title, description: description(s, plan), stateId: res.backlogState.id, labelIds } }));
+    const subtasks = (i.subtasks || []).map((s) => ({ title: s.title, input: { ...base, title: s.title, description: description(s, plan) } }));
     return { ref: i.ref, input, subtasks, blockedBy: i.blockedBy || [] };
   });
   const isNew = new Set(payloads.map((p) => p.ref));
@@ -193,10 +208,10 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
     if (isNew.has(i.ref) || isNew.has(b)) relations.push({ blocker: b, blocked: i.ref });
   }
 
-  const report = { dryRun, resume, team: res.team, backlogState: res.backlogState, payloads, relations, created: [], relationsCreated: [], skipped: keyed.map((i) => ({ ref: i.ref, key: i.key })) };
+  const report = { dryRun, resume, team: res.team, backlogState: res.backlogState, payloads, relations, external, created: [], relationsCreated: [], skipped: keyed.map((i) => ({ ref: i.ref, key: i.key })) };
   if (dryRun) return report;
 
-  const idOf = new Map();
+  const idOf = new Map(external.map((e) => [e.key, e.id]));
   try {
     for (const i of keyed) {
       const existing = (await gql(Q_ISSUE, { id: i.key }, env)).issue;
@@ -240,6 +255,22 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
     report.why = why.join("; ");
   }
   return report;
+}
+
+/* create: un issue suelto (un derivado en Build, un bug visto de paso) por
+   el mismo camino que publish (D11): plan de un issue, backlog, relectura,
+   categoría, relaciones con bloqueadores existentes. Devuelve el informe de
+   publish con `key` y `url` arriba; en dry-run, el informe con el payload. */
+export async function create({ team, title, description, labels = [], priority, blockedBy = [], spec } = {}, { env = process.env, dryRun = false } = {}) {
+  if (!team) throw new Error("create necesita el equipo (--team <clave|nombre>)");
+  if (!String(title || "").trim()) throw new Error("create necesita un título (--title)");
+  const issue = { ref: "issue", title: String(title).trim(), description: String(description || ""), labels, blockedBy };
+  if (priority !== undefined) issue.priority = priority;
+  const plan = { team, issues: [issue] };
+  if (spec) plan.spec = spec;
+  const report = await publish(plan, { env, dryRun });
+  const c = report.created[0];
+  return { key: c?.key || null, url: c?.url || null, ...report };
 }
 
 /* El borrador con las claves que aterrizaron, para reescribirlo en

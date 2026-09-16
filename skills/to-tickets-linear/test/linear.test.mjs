@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, DONE_GATE_EXIT } from "../scripts/linear.mjs";
+import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, create, DONE_GATE_EXIT } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
 
 const plan = (over = {}) => ({
@@ -338,5 +338,71 @@ test("link <A> blocks <B>: issueRelationCreate por ids; repetido no vuelve a cre
     assert.equal(stub.state.mutations.filter((m) => m.op === "issueRelationCreate").length, 1, "idempotente");
     await assert.rejects(link("JAR-14", "relates", "JAR-16", { env }), /blocks/);
     await assert.rejects(link("JAR-14", "blocks", "JAR-14", { env }), /a sí mismo/);
+  });
+});
+
+/* D7: cada create sale asignado al viewer (hoy se hacía a mano en cada
+   sesión). D11: un blockedBy con forma de clave (JAR-14) es un issue que ya
+   existe, resuelto por identificador antes de la primera escritura. */
+test("publish: cada issue y subtarea se crea con assigneeId = viewer", async () => {
+  await withStub({}, async ({ env, stub }) => {
+    const dry = await publish(plan(), { env, dryRun: true });
+    assert.ok(dry.payloads.every((p) => p.input.assigneeId === "u-1"), "issues");
+    assert.ok(dry.payloads.flatMap((p) => p.subtasks).every((s) => s.input.assigneeId === "u-1"), "subtareas");
+    await publish(plan(), { env });
+    assert.ok(stub.state.mutations.filter((m) => m.op === "issueCreate").every((m) => m.input.assigneeId === "u-1"));
+  });
+});
+
+test("publish: blockedBy con clave externa se resuelve por identificador y crea la relación; ausente falla antes de escribir", async () => {
+  const p = { team: "JAR", issues: [{ ref: "x", title: "Derivado", description: "…", blockedBy: ["JAR-14"] }] };
+  await withStub({ issues: [TODO("JAR-14")] }, async ({ env, stub }) => {
+    const dry = await publish(p, { env, dryRun: true });
+    assert.deepEqual(dry.relations, [{ blocker: "JAR-14", blocked: "x" }]);
+    assert.deepEqual(dry.external, [{ key: "JAR-14", id: "iss-JAR-14" }]);
+    assert.deepEqual(stub.state.mutations, []);
+    const r = await publish(p, { env });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.relationsCreated, [{ blocker: "JAR-14", blocked: "x" }]);
+    const rel = stub.state.mutations.find((m) => m.op === "issueRelationCreate").input;
+    assert.deepEqual(rel, { issueId: "iss-JAR-14", relatedIssueId: r.created[0].id, type: "blocks" });
+  });
+  await withStub({}, async ({ env, stub }) => {
+    await assert.rejects(publish(p, { env }), /JAR-14.*no existe/);
+    assert.deepEqual(stub.state.mutations, []);
+  });
+  assert.throws(() => order([{ ref: "a", blockedBy: ["zz"] }]), /zz/, "una ref que no parece clave sigue siendo un error del plan");
+});
+
+/* D11: create es un plan de un issue por el mismo camino que publish
+   (backlog, relectura, categoría, relaciones, informe). */
+test("create: plan de un issue por publish; --dry-run muestra assigneeId del viewer y la relación con el bloqueador sin escribir", async () => {
+  await withStub({ issues: [TODO("JAR-14")] }, async ({ env, stub }) => {
+    const dry = await create({ team: "JAR", title: "x", description: "y", labels: ["fabrica"], priority: 3, blockedBy: ["JAR-14"] }, { env, dryRun: true });
+    assert.equal(dry.dryRun, true);
+    assert.equal(dry.payloads.length, 1);
+    assert.equal(dry.payloads[0].input.assigneeId, "u-1");
+    assert.equal(dry.payloads[0].input.title, "x");
+    assert.equal(dry.payloads[0].input.description, "y");
+    assert.equal(dry.payloads[0].input.priority, 3);
+    assert.deepEqual(dry.payloads[0].input.labelIds, ["lb-fabrica"]);
+    assert.deepEqual(dry.relations, [{ blocker: "JAR-14", blocked: "issue" }]);
+    assert.deepEqual(stub.state.mutations, []);
+    const r = await create({ team: "JAR", title: "x", description: "y", blockedBy: ["JAR-14"] }, { env });
+    assert.equal(r.ok, true);
+    assert.equal(r.key, "JAR-1");
+    assert.match(r.url, /JAR-1$/);
+    assert.equal(stub.state.mutations.filter((m) => m.op === "issueCreate").length, 1);
+    assert.equal(stub.state.mutations.filter((m) => m.op === "issueRelationCreate").length, 1);
+  });
+});
+
+test("create: sin título o sin equipo falla antes de tocar la red; la spec va al pie como en publish", async () => {
+  await withStub({}, async ({ env, stub }) => {
+    await assert.rejects(create({ team: "JAR", description: "y" }, { env }), /título/);
+    await assert.rejects(create({ title: "x", description: "y" }, { env }), /equipo/);
+    assert.deepEqual(stub.state.mutations, []);
+    const dry = await create({ team: "JAR", title: "x", description: "y", spec: "docs/specs/a.md" }, { env, dryRun: true });
+    assert.match(dry.payloads[0].input.description, /^y\n\nSpec: `docs\/specs\/a\.md`$/);
   });
 });
