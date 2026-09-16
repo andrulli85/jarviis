@@ -4,7 +4,8 @@ import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, c
 import { linearStub } from "./stub.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { join, dirname } from "node:path";
+import { join, dirname, relative } from "node:path";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "linear.mjs");
@@ -493,4 +494,37 @@ test("CLI: un error de datos sale 1 con la causa en stderr y nada en stdout", as
   await withStub({ issues: [TODO("JAR-15")] }, async ({ env }) => {
     await fails(["comment", "JAR-999", "x"], env, (e) => e.status === 1 && /JAR-999.*no existe/.test(e.stderr) && e.stdout === "");
   });
+});
+
+/* ------------------------------------------------------- única puerta --- */
+
+/* D12: la puerta al tablero es este archivo. La prohibición no es nombrar la
+   variable de entorno (un test o un eval de otro skill la usa para apuntar el
+   cliente al stub, que es inyectar, no llamar) sino construir aquí una
+   petición a Linear: la URL literal, o un fetch a JARVIIS_LINEAR_URL.
+   Medido el 2026-09-12: open.mjs tenía su propio fetch con esa variable. */
+test("ningún otro archivo de skills/ ni providers/ llama a Linear: la URL y el fetch viven solo aquí", () => {
+  const repo = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+  /* linear.mjs y lo que lo prueba: el stub imita a Linear y este test nombra
+     la URL para prohibirla en todas partes menos aquí. */
+  const mine = [join("skills", "to-tickets-linear", "scripts", "linear.mjs"),
+    join("skills", "to-tickets-linear", "test", "stub.mjs"),
+    join("skills", "to-tickets-linear", "test", "linear.test.mjs")];
+  const files = [];
+  const walk = (dir) => { for (const name of readdirSync(dir)) {
+    if (name === "node_modules" || name.startsWith(".")) continue;
+    const full = join(dir, name);
+    if (statSync(full).isDirectory()) walk(full);
+    else if (/\.(mjs|js|json|md)$/.test(name)) files.push(full);
+  } };
+  for (const top of ["skills", "providers"]) walk(join(repo, top));
+  const culpables = [];
+  for (const full of files) {
+    const rel = relative(repo, full);
+    if (mine.includes(rel)) continue;
+    const text = readFileSync(full, "utf8");
+    if (text.includes("api.linear.app")) culpables.push(`${rel}: la URL de Linear literal`);
+    if (/\bfetch(Fn)?\s*\([^)]*JARVIIS_LINEAR_URL/.test(text)) culpables.push(`${rel}: un fetch propio a Linear`);
+  }
+  assert.deepEqual(culpables, [], `todo lo que habla con Linear pasa por ${mine[0]}`);
 });
