@@ -71,6 +71,18 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    turno, así que un tramo largo de silencio **se ve** y no se distingue de estar colgado.
    Pedido por Andy el 2026-09-16, tras veinte minutos de indicador encendido con el
    trabajo avanzando por dentro y nada publicado.
+9. **Si necesitas que un humano toque un archivo, dale el comando.** Nunca prosa del
+   tipo "abre X, busca la línea Y y cámbiala por Z". Un bloque copiable que se pega en
+   la terminal y ya está. La prueba, una línea: *¿puede ejecutarlo sin abrir un editor
+   y sin decidir nada?* Si no, todavía no es un comando.
+   El bloque lleva siempre tres cosas: **copia de seguridad** si sobrescribe algo,
+   **la operación**, y **una verificación que imprima el resultado** para que se vea
+   que salió bien sin tener que mirar el archivo. Si el orden importa, van en el mismo
+   bloque y en ese orden, no en pasos sueltos.
+   Antes de pasarlo, pruébalo en una copia. Un comando que le rompe un archivo de
+   configuración cuesta más que los diez minutos que ahorra.
+   Pedido por Andy el 2026-09-16, después de que le pidiera editar a mano un
+   `settings.json`.
 
 ## Lo que ya está decidido y no se rediscute
 
