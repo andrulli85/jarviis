@@ -56,8 +56,9 @@ corrida anterior o de este archivo no valen para un create.
 estado de categoría `completed` o `canceled`, por ninguna vía. El script crea
 siempre en el primer estado `backlog` (o `unstarted`) del equipo, re-lee
 cada issue y comprueba la **categoría** (`state.type`), no el nombre. Si algo
-aterriza en Done, el informe sale `ok:false` y lo dice. Este skill no mueve
-issues: no hay comando para ello.
+aterriza en Done, el informe sale `ok:false` y lo dice. `move` existe (ver
+"Comandos del tablero") pero rechaza las categorías de cierre: a Done no llega
+nada por comando.
 
 **`--dry-run` es de solo lectura, no sin llamadas.** Resuelve equipo,
 estados y etiquetas contra el servidor y renderiza cada payload; no crea, no
@@ -206,6 +207,7 @@ mano; si algo falta, se añade un comando, no una query suelta.
 
 ```
 node <dir>/scripts/linear.mjs comment <clave> <texto | ->
+node <dir>/scripts/linear.mjs comment-draft <borrador.json> <texto | ->
 node <dir>/scripts/linear.mjs create --team <clave|nombre> --title "…" --description <texto | -> \
      [--label L]… [--priority 0-4] [--blocked-by CLAVE]… [--assignee me] [--spec docs/specs/x.md]
 node <dir>/scripts/linear.mjs assign <clave> [me]
@@ -228,6 +230,12 @@ Linear: `--dry-runn` tiene que doler en la terminal, no en la card de Andy.
   vuelve `ok:false` (una relación que no se creó, un issue que aterrizó en
   Done), con el informe entero en stdout: hay issues ya creados y reintentar a
   ciegas los duplica. Un informe impreso no es un informe comprobado.
+- **`comment-draft`** pone el MISMO texto en cada issue **de primer nivel** del
+  borrador y le escribe el recibo `comment: { id, at }` junto a la clave. Es el
+  comentario de Slice del paso 7: no tiene `--resume` porque reanudar es su
+  única forma de correr, y un issue con recibo no se vuelve a comentar nunca.
+  Las subtareas quedan fuera a propósito y el informe las lista en
+  `skippedSubtasks`.
 - **`create`** es azúcar sobre `publish` (D11): construye un plan de un issue
   y lo pasa por el mismo camino, así que hereda backlog, relectura, categoría
   y relaciones. Para un issue derivado en Build, no para desglosar una spec:
@@ -260,5 +268,53 @@ Con el informe `ok:true`, dos escrituras fuera de Linear y ninguna más:
   subtareas) y `status: idea` a `status: sliced`.
 
 Reporta las claves con sus aristas de bloqueo y las URLs, para que el usuario
-abra el tablero y vea la forma. Termina con el siguiente comando de la
-fábrica para la primera clave: `/wayfinder JAR-12`.
+abra el tablero y vea la forma. **Slice no termina aquí**: falta el paso 7, y
+antes de él la PR de docs tiene que estar mergeada.
+
+### 7. El comentario en cada card de primer nivel
+
+Andy lee el tablero desde el teléfono y el repo no. Un desglose publicado sin
+una línea que lo explique deja la card muda: el 2026-09-12 dos issues llegaron
+al tablero sin decir por qué eran dos y no tres. Este paso lo arregla (D5 y
+D13 de `docs/specs/linear-comentarios-para-humanos.md`).
+
+**Corre después de mergear la PR de docs**, no al publicar: el comentario
+enlaza el veredicto del quiz, y el enlace solo vale si apunta a `main`. Por eso
+tampoco lo emite `publish`.
+
+Redacta un texto y solo uno, el mismo para todas las cards de primer nivel de
+la spec: el resumen del desglose **validado** ("2 issues en vez de 3 porque el
+tercero no se demostraba solo"), no el que llevaste al quiz, y el enlace al
+veredicto en `main`. Vale la regla única: si Andy no decidiría distinto al
+leerlo, sobra.
+
+El texto va a un archivo temporal y entra por stdin las dos veces, así el
+ensayo y la corrida real comentan exactamente lo mismo:
+
+```
+cat > /tmp/slice-<slug>.txt <<'EOF'
+2 issues en vez de 3: el tercero (tests y README) era la capa final del segundo.
+Veredicto: https://github.com/<repo>/blob/main/docs/grill/<slug>/verdict.md
+EOF
+node <dir>/scripts/linear.mjs comment-draft docs/tickets/<slug>.json - --dry-run < /tmp/slice-<slug>.txt
+node <dir>/scripts/linear.mjs comment-draft docs/tickets/<slug>.json -           < /tmp/slice-<slug>.txt
+```
+
+El comando recorre los issues de primer nivel **sin recibo**, comenta cada uno
+y escribe en el borrador `comment: { id, at }` al lado de su `key`. Si se para
+a mitad sale 1, deja escritos los recibos que sí llegaron y repetir el comando
+tal cual solo comenta los que faltan. Un issue con recibo no recibe un segundo
+comentario nunca; un recibo perdido sí produce un duplicado, que se ve en la
+card y se borra a mano (decidido así: un comentario perdido es peor).
+
+**Las subtareas no reciben el resumen**, igual que no entran en el `issue:` del
+frontmatter: el porqué del desglose en un hijo de checklist es el ruido que la
+regla única prohíbe. Pero el informe las nombra en `skippedSubtasks`, porque un
+`ok:true` sobre un borrador con cards sin tocar sería una mentira por omisión
+(hallazgo del review adversarial, 2026-09-16). Si algún día una subtarea
+necesita su propia explicación, es un `comment <clave>` suelto y a mano, no
+este paso.
+
+El borrador con los recibos viaja en un commit propio, después del de la PR de
+docs. **Slice termina cuando el comentario está puesto**; entonces sí, el
+siguiente comando de la fábrica para la primera clave: `/wayfinder JAR-12`.

@@ -139,6 +139,7 @@ asume sin preguntar.
 | Issue | Clave de Linear (`JAR-12`) es la clave única de todo el hilo. Título en imperativo. Descripción enlaza la spec. |
 | Workspace Conductor | Uno por issue. Rama `<slug de la spec>/<clave>-<título en kebab>` (`flujos-end-to-end/jar-12-el-wayfinder-entra-por-la-estacion`): Conductor lista los workspaces por rama, así las cards de una spec quedan juntas; la clave dentro hace que Linear cierre el issue al merge. La pone `build-kickoff` en el prompt de arranque (decidido 2026-09-12). |
 | PR | Primera línea del cuerpo referencia la clave. Linear cierra el issue al merge. |
+| Comentarios en la card | La card cuenta en palabras lo que Andy necesita para decidir desde el teléfono, y solo eso: se comenta si Andy tomaría una decisión distinta al leerlo. Slice deja el resumen del desglose validado con el enlace al veredicto en cada card de primer nivel (`linear.mjs comment-draft`, con recibo en el borrador; las subtareas quedan fuera); Build deja tres y ninguno más: arranque (alcance y plan), cambio de plan (decisión, sorpresa, bloqueo, issue derivado) y cierre (resultado, número de PR, "se cierra con esta PR"). Tono de Slack, en español. Todo por `linear.mjs`, nunca a mano (decidido 2026-09-12). |
 | Learning | Frontmatter con `date:` y `issue: JAR-12`. |
 
 ## Documentos

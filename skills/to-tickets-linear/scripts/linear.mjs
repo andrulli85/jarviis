@@ -5,6 +5,7 @@
    node linear.mjs publish <plan.json> [--dry-run] [--resume]   → informe (JSON)
    node linear.mjs issue <clave>                     → estado, PR, título y spec (JSON)
    node linear.mjs comment <clave> <texto | ->       → { key, commentId, url }
+   node linear.mjs comment-draft <borrador.json> <texto | ->    → informe (JSON)
    node linear.mjs create --team … --title … --description <texto | -> …  → { key, url }
    node linear.mjs assign <clave> [me]               → { key, assignee }
    node linear.mjs move <clave> <estado>             → { key, from, state }
@@ -335,6 +336,88 @@ export async function comment(key, body, { env = process.env, dryRun = false } =
   return { key: issue.identifier, commentId: c.comment.id, url: c.comment.url };
 }
 
+/* comment-draft <borrador.json> <texto | ->: el comentario de Slice (D5),
+   el mismo resumen del desglose validado en cada issue de primer nivel del
+   borrador.
+
+   D13: no lo emite `publish`. Es un paso propio que corre después de
+   `publish.ok:true` Y de mergear la PR de docs, para que el enlace al
+   veredicto apunte a `main`. Entre ambos momentos no queda nada en memoria,
+   así que la reanudación no puede depender de la corrida: el recibo
+   `comment: { id, at }` vive en el borrador, junto a `key`, y este paso solo
+   comenta los issues que no lo tienen. No hay `--resume`; reanudar es la
+   única forma de correr. Un duplicado por recibo perdido se acepta (se ve en
+   la card y se borra a mano); un comentario perdido, no.
+
+   **Solo el primer nivel.** Las subtareas no reciben el resumen: el porqué
+   del desglose en un hijo de checklist es el ruido que prohíbe D1 (Andy no
+   decide distinto al leerlo dos veces), y el frontmatter de la spec ya guarda
+   solo las claves de primer nivel. Pero la decisión se dice en voz alta:
+   `skippedSubtasks` nombra las que quedaron fuera, porque un informe `ok:true`
+   sobre un borrador con cards sin tocar es una mentira por omisión (hallazgo
+   del review adversarial de Codex, 2026-09-16).
+
+   Pura respecto al borrador: quien le escribe los recibos es `withComments`
+   y el archivo lo reescribe el CLI. */
+export async function commentDraft(plan, body, { env = process.env, dryRun = false } = {}) {
+  const text = String(body || "").trim();
+  if (!text) throw new Error("el comentario de Slice necesita texto (argumento o `-` para leerlo de stdin)");
+  const issues = plan?.issues || [];
+  if (!issues.length) throw new Error("el borrador no tiene issues que comentar");
+  /* Sin clave no hay dónde comentar: el borrador no se publicó (o se publicó
+     a medias). Es un fallo del paso anterior, y se ve antes de escribir. */
+  const sinClave = issues.filter((i) => !i.key).map((i) => i.ref || i.title);
+  if (sinClave.length) throw new Error(`el borrador tiene issues sin clave (${sinClave.join(", ")}): publish no terminó, no hay dónde comentar`);
+
+  const pendientes = issues.filter((i) => !i.comment);
+  const report = {
+    dryRun, total: issues.length,
+    already: issues.filter((i) => i.comment).map((i) => i.key),
+    pending: pendientes.map((i) => i.key),
+    /* Vacía y no ausente: leer el informe no debe depender de saber si el
+       campo existe en esta corrida. */
+    skippedSubtasks: issues.flatMap((i) => (i.subtasks || []).map((st) => st.key).filter(Boolean)),
+    commented: [],
+  };
+  if (dryRun) {
+    report.payloads = [];
+    for (const i of pendientes) {
+      const { payload } = await comment(i.key, text, { env, dryRun: true });
+      report.payloads.push({ key: i.key, payload });
+    }
+    return report;
+  }
+  for (const i of pendientes) {
+    try {
+      const c = await comment(i.key, text, { env });
+      report.commented.push({ key: c.key, commentId: c.commentId, url: c.url, at: new Date().toISOString() });
+    } catch (e) {
+      report.ok = false;
+      report.why = `parado en ${i.key}: ${e.message}. Comentados hasta ahora: ${report.commented.map((c) => c.key).join(", ") || "ninguno"}. Guarda los recibos y repite el paso: solo comentará los que falten`;
+      return report;
+    }
+  }
+  report.ok = true;
+  return report;
+}
+
+/* El borrador con los recibos que aterrizaron, para reescribir
+   docs/tickets/<slug>.json. Igual de pura que `withKeys`, pero no su gemela:
+   `withKeys` baja a las subtareas porque cada una recibió su propia clave al
+   crearse, y aquí no hay nada que bajar — el resumen del desglose es del
+   primer nivel (ver `commentDraft`). Un issue con `comment` ya está
+   comentado, uno sin él todavía no. */
+export function withComments(plan, report) {
+  const byKey = new Map((report.commented || []).map((c) => [c.key, c]));
+  return {
+    ...plan,
+    issues: (plan.issues || []).map((i) => {
+      const c = byKey.get(i.key);
+      return c ? { ...i, comment: { id: c.commentId, at: c.at } } : i;
+    }),
+  };
+}
+
 const M_UPDATE = `mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
   issueUpdate(id: $id, input: $input) { success issue { id identifier state { id name type } assignee { id name } } } }`;
 
@@ -456,12 +539,14 @@ if (invokedDirectly) {
      aquí y no en la card de Andy (hallazgo del review adversarial). El valor
      de una opción nunca empieza por `--`, así que todo `--x` es una opción. */
   const OPCIONES = {
-    resolve: [], issue: [], comment: ["--dry-run"], assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
+    resolve: [], issue: [], comment: ["--dry-run"], "comment-draft": ["--dry-run"],
+    assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
     publish: ["--dry-run", "--resume"],
     create: ["--dry-run", "--team", "--title", "--description", "--label", "--priority", "--blocked-by", "--assignee", "--spec"],
   };
   const USO = "uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>\n"
-    + "     comment <clave> <texto | -> | create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
+    + "     comment <clave> <texto | -> | comment-draft <borrador.json> <texto | ->\n"
+    + "     create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
     + "     assign <clave> [me] | move <clave> <estado> | link <A> blocks <B>\n"
     + "     los que escriben aceptan --dry-run: renderizan el payload sin escribir";
   /* Un texto largo (un comentario, una descripción) entra por stdin con `-`:
@@ -496,6 +581,16 @@ if (invokedDirectly) {
     if (cmd === "resolve") out(await resolveTeam(words[0]));
     else if (cmd === "issue") out(await issueInfo(words[0]));
     else if (cmd === "comment") out(await comment(words[0], textOf(words[1], "el texto del comentario"), { dryRun }));
+    else if (cmd === "comment-draft") {
+      const file = words[0];
+      if (!file) throw new Error("comment-draft necesita el borrador (docs/tickets/<slug>.json)");
+      const plan = JSON.parse(readFileSync(file, "utf8"));
+      const r = await commentDraft(plan, textOf(words[1], "el texto del comentario"), { dryRun });
+      /* Los recibos se escriben también cuando el paso paró a mitad: lo
+         comentado hasta ahí es justo lo que no hay que repetir. */
+      if (!r.dryRun && r.commented.length) writeFileSync(file, JSON.stringify(withComments(plan, r), null, 2) + "\n");
+      report(r);
+    }
     else if (cmd === "assign") out(await assign(words[0], words[1] || "me", { dryRun }));
     else if (cmd === "move") out(await move(words[0], words.slice(1).join(" "), { dryRun }));
     else if (cmd === "link") out(await link(words[0], words[1], words[2], { dryRun }));

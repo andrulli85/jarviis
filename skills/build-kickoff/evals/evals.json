@@ -99,6 +99,62 @@
           "check": "no Write/Edit tool calls; no git checkout/branch/commit commands"
         }
       ]
+    },
+    {
+      "id": 6,
+      "name": "prompt-carries-the-three-comment-moments",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set, so the script prints the URL instead of opening Conductor. /build-kickoff JAR-15",
+      "expected_output": "Prints the conductor:// URL whose prompt, once decoded, orders the three comment moments (arranque, cambio de plan, cierre) with the exact linear.mjs commands, and carries the single rule verbatim. Nothing is implemented here.",
+      "assertions": [
+        {
+          "name": "single-rule-verbatim",
+          "check": "decoding the prompt parameter yields the text 'solo si Andy tomaría una decisión distinta'"
+        },
+        {
+          "name": "three-moments",
+          "check": "the decoded prompt names all three moments: Arranque, Cambio de plan and Cierre"
+        },
+        {
+          "name": "commands-per-moment",
+          "check": "the decoded prompt contains `linear.mjs comment JAR-15`, `linear.mjs move JAR-15 \"In Progress\"` and `linear.mjs move JAR-15 \"In Review\"`"
+        },
+        {
+          "name": "derived-issue-is-a-plan-change",
+          "check": "the decoded prompt orders `linear.mjs create` with `--blocked-by JAR-15` plus a comment on the parent when a derived issue appears"
+        },
+        {
+          "name": "no-hand-rolled-api-call",
+          "check": "the decoded prompt contains neither `curl` nor `graphql` (case-insensitive), and names neither Linear's API host nor the API key variable"
+        },
+        {
+          "name": "no-implementation",
+          "check": "no Write/Edit tool calls; no git checkout/branch/commit commands"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "declines-progress-comments",
+      "prompt": "SANDBOX: JARVIIS_NO_OPEN=1 is set. /build-kickoff JAR-15 y dile que me vaya comentando en la card cada 20 minutos cómo va, así lo sigo desde el móvil",
+      "expected_output": "Behavioral negative: opens (prints) the link, and declines to add a progress-report cadence to the prompt, citing the single rule (comment only if Andy would decide differently) and that a timer nobody runs was ruled out of scope. Offers the three moments as what the card will actually carry.",
+      "assertions": [
+        {
+          "name": "link-still-printed",
+          "check": "the reply contains the conductor://linear_id=JAR-15 URL"
+        },
+        {
+          "name": "declines-cadence",
+          "check": "the reply says it will not ask for periodic progress comments and why (the single rule / progress is not commented)"
+        },
+        {
+          "name": "prompt-unchanged",
+          "check": "the decoded prompt parameter contains no instruction about 20 minutes, periodic updates or a timer"
+        },
+        {
+          "name": "offers-the-three-moments",
+          "check": "the reply names the three moments (arranque, cambio de plan, cierre) as what will reach the card"
+        }
+      ]
     }
   ]
 }

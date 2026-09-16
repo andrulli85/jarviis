@@ -1,11 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, create, DONE_GATE_EXIT } from "../scripts/linear.mjs";
+import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, create, commentDraft, withComments, DONE_GATE_EXIT } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join, dirname, relative } from "node:path";
-import { readFileSync, readdirSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
@@ -497,6 +497,153 @@ test("CLI: un error de datos sale 1 con la causa en stderr y nada en stdout", as
   });
 });
 
+/* ------------------------------------------- comentario de Slice (D13) --- */
+
+/* D13: el comentario de Slice no lo emite publish, es un paso propio que
+   corre DESPUÉS de mergear la PR de docs (para que el enlace al veredicto
+   apunte a main). Por eso tiene que ser reanudable sin releer nada de Linear:
+   el recibo `comment: { id, at }` vive en el borrador, junto a la clave. */
+
+const borrador = (over = {}) => ({
+  team: "JAR",
+  spec: "docs/specs/linear-comentarios-para-humanos.md",
+  issues: [
+    { ref: "cli", title: "T1", key: "JAR-16" },
+    { ref: "moments", title: "T2", key: "JAR-17" },
+  ],
+  ...over,
+});
+const RESUMEN = "2 issues en vez de 3: el tercero no se demostraba solo.\nVeredicto: docs/grill/slice-linear-comentarios/verdict.md";
+
+test("commentDraft: comenta cada issue de primer nivel una vez y devuelve el recibo de cada uno", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const r = await commentDraft(borrador(), RESUMEN, { env });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.commented.map((c) => c.key), ["JAR-16", "JAR-17"]);
+    assert.ok(r.commented.every((c) => c.commentId && c.at), "cada uno trae id y fecha");
+    assert.deepEqual(stub.state.mutations.filter((m) => m.op === "commentCreate").map((m) => m.input.body), [RESUMEN, RESUMEN]);
+  });
+});
+
+test("commentDraft: los que ya traen recibo no se vuelven a comentar", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const conRecibo = borrador();
+    conRecibo.issues[0].comment = { id: "cm-viejo", at: "2026-09-12T10:00:00.000Z" };
+    const r = await commentDraft(conRecibo, RESUMEN, { env });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.already, ["JAR-16"]);
+    assert.deepEqual(r.commented.map((c) => c.key), ["JAR-17"]);
+    assert.equal(stub.state.mutations.filter((m) => m.op === "commentCreate").length, 1);
+  });
+});
+
+/* El criterio de aceptación de JAR-17: tras un fallo a mitad, repetir el paso
+   solo comenta los que faltan. La reanudación no es una opción (--resume) sino
+   la única forma de correr: el recibo manda. Aquí el fallo es el real (Linear
+   no encuentra JAR-17 en la primera corrida) y el segundo intento ya lo ve. */
+test("commentDraft: un fallo a mitad para y reporta lo comentado; repetirlo con el borrador actualizado solo comenta lo que falta", async () => {
+  const plan1 = borrador();
+  let parcial;
+  await withStub({ issues: [TODO("JAR-16")] }, async ({ env, stub }) => {
+    parcial = await commentDraft(plan1, RESUMEN, { env });
+    assert.equal(parcial.ok, false);
+    assert.match(parcial.why, /JAR-17/);
+    assert.deepEqual(parcial.commented.map((c) => c.key), ["JAR-16"]);
+    assert.equal(stub.state.mutations.filter((m) => m.op === "commentCreate").length, 1);
+  });
+
+  /* El borrador se reescribe con los recibos que sí llegaron, sin mutar el original. */
+  const plan2 = withComments(plan1, parcial);
+  assert.equal(plan2.issues[0].comment.id, parcial.commented[0].commentId);
+  assert.equal(plan2.issues[0].comment.at, parcial.commented[0].at);
+  assert.equal(plan2.issues[1].comment, undefined);
+  assert.equal(plan1.issues[0].comment, undefined, "withComments no muta el borrador");
+
+  /* Y el segundo intento solo toca al que no tiene recibo. */
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const r2 = await commentDraft(plan2, RESUMEN, { env });
+    assert.equal(r2.ok, true);
+    assert.deepEqual(r2.commented.map((c) => c.key), ["JAR-17"]);
+    assert.deepEqual(r2.already, ["JAR-16"]);
+    assert.deepEqual(stub.state.mutations.filter((m) => m.op === "commentCreate").map((m) => m.input.issueId), ["iss-JAR-17"],
+      "JAR-16 no recibe un segundo comentario");
+  });
+});
+
+/* Hallazgo del review adversarial de Codex (2026-09-16, pasada 1): el paso
+   dejaba las subtareas sin comentar y devolvía ok:true sin mencionarlas, así
+   que un borrador de 1 issue + 1 subtarea salía "completo" con una card sin
+   tocar. Comentar la subtarea sería lo incorrecto — el resumen del desglose
+   en un hijo de checklist es justo el ruido que prohíbe D1, y el frontmatter
+   de la spec ya guarda solo las claves de primer nivel — pero callarlo
+   también: la decisión tiene que estar en la salida. */
+test("commentDraft: las subtareas quedan fuera a propósito y el informe las nombra", async () => {
+  await withStub({ issues: [TODO("JAR-1"), TODO("JAR-2"), TODO("JAR-3")] }, async ({ env, stub }) => {
+    const conSub = { team: "JAR", issues: [
+      { ref: "padre", key: "JAR-1", subtasks: [{ title: "sub", key: "JAR-2" }, { title: "otra", key: "JAR-3" }] },
+    ] };
+    const r = await commentDraft(conSub, RESUMEN, { env });
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.commented.map((c) => c.key), ["JAR-1"], "solo el primer nivel recibe el resumen");
+    assert.deepEqual(r.skippedSubtasks, ["JAR-2", "JAR-3"], "y el informe dice qué se dejó fuera");
+    assert.deepEqual(stub.state.mutations.filter((m) => m.op === "commentCreate").map((m) => m.input.issueId), ["iss-JAR-1"]);
+  });
+});
+
+/* Un borrador sin subtareas no inventa la clave: el campo va vacío, no
+   ausente, para que leer el informe no dependa de saber si existe. */
+test("commentDraft: sin subtareas, skippedSubtasks es una lista vacía", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env }) => {
+    const r = await commentDraft(borrador(), RESUMEN, { env });
+    assert.deepEqual(r.skippedSubtasks, []);
+  });
+});
+
+test("commentDraft: un borrador con issues sin clave o sin texto falla antes de escribir nada", async () => {
+  await withStub({ issues: [TODO("JAR-16")] }, async ({ env, stub }) => {
+    const sinClave = borrador();
+    delete sinClave.issues[1].key;
+    await assert.rejects(() => commentDraft(sinClave, RESUMEN, { env }), /moments.*sin clave|sin clave.*moments/);
+    await assert.rejects(() => commentDraft(borrador(), "   ", { env }), /texto/);
+    await assert.rejects(() => commentDraft({ team: "JAR", issues: [] }, RESUMEN, { env }), /sin issues|no tiene issues/);
+    assert.deepEqual(stub.state.mutations, [], "ninguna escritura");
+  });
+});
+
+test("commentDraft --dry-run: renderiza el payload de los que faltan y no escribe", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const conRecibo = borrador();
+    conRecibo.issues[0].comment = { id: "cm-viejo", at: "2026-09-12T10:00:00.000Z" };
+    const r = await commentDraft(conRecibo, RESUMEN, { env, dryRun: true });
+    assert.equal(r.dryRun, true);
+    assert.deepEqual(r.pending, ["JAR-17"]);
+    assert.deepEqual(r.payloads, [{ key: "JAR-17", payload: { issueId: "iss-JAR-17", body: RESUMEN } }]);
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
+test("CLI comment-draft: comenta el borrador, le escribe los recibos y repetirlo no duplica", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const dir = mkdtempSync(join(tmpdir(), "tickets-"));
+    const file = join(dir, "linear-comentarios-para-humanos.json");
+    writeFileSync(file, JSON.stringify(borrador(), null, 2) + "\n");
+
+    const seco = await json(["comment-draft", file, "-", "--dry-run"], env, { input: RESUMEN });
+    assert.deepEqual(seco.pending, ["JAR-16", "JAR-17"]);
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).issues[0].comment, undefined, "el dry-run no toca el borrador");
+
+    const out = await json(["comment-draft", file, "-"], env, { input: RESUMEN });
+    assert.equal(out.ok, true);
+    const escrito = JSON.parse(readFileSync(file, "utf8"));
+    assert.deepEqual(escrito.issues.map((i) => i.comment.id), out.commented.map((c) => c.commentId));
+    assert.ok(escrito.issues.every((i) => !Number.isNaN(Date.parse(i.comment.at))), "`at` es una fecha ISO");
+
+    const otra = await json(["comment-draft", file, "-"], env, { input: RESUMEN });
+    assert.deepEqual(otra.commented, [], "nada que comentar");
+    assert.deepEqual(otra.already, ["JAR-16", "JAR-17"]);
+  });
+});
+
 /* ------------------------------------------------------- única puerta --- */
 
 /* D12: la puerta al tablero es este archivo. La prohibición no es nombrar la
@@ -601,5 +748,50 @@ test("CLI: los comandos de lectura no admiten --dry-run, y el uso no lo promete"
       assert.ok(await run(cmd, env), `${cmd[0]} sin opciones sigue funcionando`);
     }
     await fails(["inventado"], env, (e) => !/todos aceptan --dry-run/.test(e.stderr));
+  });
+});
+
+/* Los tres arreglos de JAR-16 aterrizaron en main mientras esta rama estaba
+   en vuelo, y `comment-draft` nació sin ellos: no estaba en OPCIONES (así que
+   el validador de opciones se salta entero), salía con process.exit() y no
+   mandaba la causa a stderr. El barrido de un arreglo tiene que alcanzar a los
+   comandos que llegan después, no solo a los que existían cuando se hizo. */
+test("CLI comment-draft: una opción desconocida sale 2 y no comenta nada", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const dir = mkdtempSync(join(tmpdir(), "tickets-opt-"));
+    const file = join(dir, "b.json");
+    writeFileSync(file, JSON.stringify(borrador(), null, 2) + "\n");
+    for (const mal of ["--dry-runn", "--resume", "--inventada"]) {
+      await fails(["comment-draft", file, "-", mal], env,
+        (e) => e.status === 2 && new RegExp(`opción desconocida ${mal}`).test(e.stderr), { input: RESUMEN });
+    }
+    assert.deepEqual(stub.state.mutations, [], "nada llegó a Linear");
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).issues[0].comment, undefined, "ni al borrador");
+    /* Y el bueno sigue valiendo. */
+    assert.equal((await json(["comment-draft", file, "-", "--dry-run"], env, { input: RESUMEN })).dryRun, true);
+  });
+});
+
+test("CLI comment-draft: un fallo a mitad sale 1, la causa va a stderr y el informe con los recibos llega entero al pipe", async () => {
+  /* JAR-17 no existe en el stub: el paso comenta JAR-16 y se para. El informe
+     se hace grande a propósito (el texto va dentro de los payloads del
+     dry-run... y en el real, en `why`), así que si el exit no espera a vaciar
+     stdout, JSON.parse revienta y los recibos se pierden. */
+  await withStub({ issues: [TODO("JAR-16")] }, async ({ env }) => {
+    const dir = mkdtempSync(join(tmpdir(), "tickets-pipe-"));
+    const file = join(dir, "b.json");
+    writeFileSync(file, JSON.stringify(borrador({ issues: [
+      { ref: "cli", key: "JAR-16" },
+      { ref: "moments", key: "JAR-17", title: "y".repeat(120_000) },
+    ] }), null, 2) + "\n");
+    await fails(["comment-draft", file, "-"], env, (e) => {
+      assert.equal(e.status, 1);
+      assert.match(e.stderr, /JAR-17/, "la causa va a stderr, no solo dentro del JSON");
+      const informe = JSON.parse(e.stdout);   // lanza si llegó cortado
+      assert.deepEqual(informe.commented.map((c) => c.key), ["JAR-16"], "el recibo sobrevive al exit");
+      return true;
+    }, { input: RESUMEN });
+    /* Y el recibo quedó escrito: repetir no vuelve a comentar JAR-16. */
+    assert.ok(JSON.parse(readFileSync(file, "utf8")).issues[0].comment.id);
   });
 });
