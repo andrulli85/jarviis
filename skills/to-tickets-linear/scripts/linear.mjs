@@ -539,7 +539,8 @@ if (invokedDirectly) {
      aquí y no en la card de Andy (hallazgo del review adversarial). El valor
      de una opción nunca empieza por `--`, así que todo `--x` es una opción. */
   const OPCIONES = {
-    resolve: [], issue: [], comment: ["--dry-run"], assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
+    resolve: [], issue: [], comment: ["--dry-run"], "comment-draft": ["--dry-run"],
+    assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
     publish: ["--dry-run", "--resume"],
     create: ["--dry-run", "--team", "--title", "--description", "--label", "--priority", "--blocked-by", "--assignee", "--spec"],
   };
@@ -588,8 +589,7 @@ if (invokedDirectly) {
       /* Los recibos se escriben también cuando el paso paró a mitad: lo
          comentado hasta ahí es justo lo que no hay que repetir. */
       if (!r.dryRun && r.commented.length) writeFileSync(file, JSON.stringify(withComments(plan, r), null, 2) + "\n");
-      out(r);
-      if (r.ok === false) process.exit(1);
+      report(r);
     }
     else if (cmd === "assign") out(await assign(words[0], words[1] || "me", { dryRun }));
     else if (cmd === "move") out(await move(words[0], words.slice(1).join(" "), { dryRun }));

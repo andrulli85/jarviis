@@ -750,3 +750,48 @@ test("CLI: los comandos de lectura no admiten --dry-run, y el uso no lo promete"
     await fails(["inventado"], env, (e) => !/todos aceptan --dry-run/.test(e.stderr));
   });
 });
+
+/* Los tres arreglos de JAR-16 aterrizaron en main mientras esta rama estaba
+   en vuelo, y `comment-draft` nació sin ellos: no estaba en OPCIONES (así que
+   el validador de opciones se salta entero), salía con process.exit() y no
+   mandaba la causa a stderr. El barrido de un arreglo tiene que alcanzar a los
+   comandos que llegan después, no solo a los que existían cuando se hizo. */
+test("CLI comment-draft: una opción desconocida sale 2 y no comenta nada", async () => {
+  await withStub({ issues: [TODO("JAR-16"), TODO("JAR-17")] }, async ({ env, stub }) => {
+    const dir = mkdtempSync(join(tmpdir(), "tickets-opt-"));
+    const file = join(dir, "b.json");
+    writeFileSync(file, JSON.stringify(borrador(), null, 2) + "\n");
+    for (const mal of ["--dry-runn", "--resume", "--inventada"]) {
+      await fails(["comment-draft", file, "-", mal], env,
+        (e) => e.status === 2 && new RegExp(`opción desconocida ${mal}`).test(e.stderr), { input: RESUMEN });
+    }
+    assert.deepEqual(stub.state.mutations, [], "nada llegó a Linear");
+    assert.equal(JSON.parse(readFileSync(file, "utf8")).issues[0].comment, undefined, "ni al borrador");
+    /* Y el bueno sigue valiendo. */
+    assert.equal((await json(["comment-draft", file, "-", "--dry-run"], env, { input: RESUMEN })).dryRun, true);
+  });
+});
+
+test("CLI comment-draft: un fallo a mitad sale 1, la causa va a stderr y el informe con los recibos llega entero al pipe", async () => {
+  /* JAR-17 no existe en el stub: el paso comenta JAR-16 y se para. El informe
+     se hace grande a propósito (el texto va dentro de los payloads del
+     dry-run... y en el real, en `why`), así que si el exit no espera a vaciar
+     stdout, JSON.parse revienta y los recibos se pierden. */
+  await withStub({ issues: [TODO("JAR-16")] }, async ({ env }) => {
+    const dir = mkdtempSync(join(tmpdir(), "tickets-pipe-"));
+    const file = join(dir, "b.json");
+    writeFileSync(file, JSON.stringify(borrador({ issues: [
+      { ref: "cli", key: "JAR-16" },
+      { ref: "moments", key: "JAR-17", title: "y".repeat(120_000) },
+    ] }), null, 2) + "\n");
+    await fails(["comment-draft", file, "-"], env, (e) => {
+      assert.equal(e.status, 1);
+      assert.match(e.stderr, /JAR-17/, "la causa va a stderr, no solo dentro del JSON");
+      const informe = JSON.parse(e.stdout);   // lanza si llegó cortado
+      assert.deepEqual(informe.commented.map((c) => c.key), ["JAR-16"], "el recibo sobrevive al exit");
+      return true;
+    }, { input: RESUMEN });
+    /* Y el recibo quedó escrito: repetir no vuelve a comentar JAR-16. */
+    assert.ok(JSON.parse(readFileSync(file, "utf8")).issues[0].comment.id);
+  });
+});
