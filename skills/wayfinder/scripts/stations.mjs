@@ -2,7 +2,7 @@
 /* stations.mjs: la tabla de las cinco estaciones con su estado real en esta
    máquina, sin entrada.
 
-   node stations.mjs [--json] [--check] [--probe] [--cwd DIR]
+   node stations.mjs [--json] [--check] [--probe] [--sync-merges] [--cwd DIR]
 
    Es `npm run stations`: comprobar de un vistazo si la fábrica está
    instalada (skills enlazadas) y si cada proveedor RESPONDE, no solo si está
@@ -14,13 +14,17 @@
 
    Debajo va "Review pendiente": qué commits de este repo no han pasado por
    adversarial-review y el comando para saldarlos. Es informativa: no
-   cambia el exit (D3).
+   cambia el exit (D3). Con el merge por squash el commit revisado desaparece
+   de main y su evidencia dejaría de contar: `--sync-merges` le pregunta a
+   `gh` qué commit de rama entró con qué commit de main y guarda el mapa, así
+   la deuda baja cuando el trabajo se mergea.
 
    Exit: 0; con --check o --probe, 1 si hay algo que arreglar (skill rota o
    canal en quota/down/sin sondear); 2 si la flag no existe. */
 
-import { realpathSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
+import { dirname } from "node:path";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
@@ -74,20 +78,108 @@ function gitIn(cwd) {
    nunca subinclusivo, y la nota dice cuántos ya revisados arrastra).
 
    → { lastReviewed: [{ sha, at }], pending: [sha…], command, note } */
-export function reviewDebt({ cwd = process.cwd(), evidenceDir = defaultEvidenceDir(process.env), git } = {}) {
+export function reviewDebt({ cwd = process.cwd(), evidenceDir = defaultEvidenceDir(process.env), git, merges } = {}) {
   git ||= gitIn(cwd);
   const { records } = readEvidence({ evidenceDir });
+  const map = merges || readMergeMap(defaultMergeFile(process.env));
   const byTo = new Map();
   for (const r of records) if (r.ok && r.verdict != null && r.to && !byTo.has(r.to)) byTo.set(r.to, r.at);
-  const lastReviewed = [...byTo].filter(([to]) => git(["merge-base", "--is-ancestor", to, "HEAD"]) !== null).map(([sha, at]) => ({ sha, at: rfc3339(at) }));
-  if (!lastReviewed.length) return { lastReviewed, pending: [], command: null, note: REVIEW_NOTE };
+  /* Fuera de un repo no hay nada que saldar, y tampoco huérfanos que
+     denunciar: la evidencia es global (un solo directorio para todos los
+     repos) y sin HEAD contra el que medir, todo parecería de aquí. */
+  if (!git(["rev-parse", "--git-dir"])) return { lastReviewed: [], pending: [], command: null, orphans: [], note: REVIEW_NOTE };
+  const enHead = (sha) => sha && git(["merge-base", "--is-ancestor", sha, "HEAD"]) !== null;
+  /* Y por lo mismo, solo es huérfano un commit que este repo conoce: el `to`
+     de un review de OTRO repo no es deuda de este ni pide sincronizar nada. */
+  const deEsteRepo = (sha) => sha && git(["cat-file", "-e", `${sha}^{commit}`]) !== null;
+  /* Un `to` que ya no está en HEAD no cuenta por sí solo, pero puede haber
+     entrado aplastado: el mapa dice con qué commit de main aterrizó, y ese
+     sí se comprueba contra este HEAD. Traducido, la evidencia vale; sin
+     traducción válida, el review queda huérfano y se dice. */
+  const lastReviewed = [], orphans = [];
+  for (const [to, at] of byTo) {
+    if (enHead(to)) { lastReviewed.push({ sha: to, at: rfc3339(at) }); continue; }
+    const mergedAs = map[to]?.mergedAs;
+    if (enHead(mergedAs)) lastReviewed.push({ sha: mergedAs, at: rfc3339(at), via: to, pr: map[to].pr ?? null });
+    else if (deEsteRepo(to)) orphans.push(to);
+  }
+  /* Sin prometer de más: un `to` huérfano puede venir de una PR mergeada
+     (y entonces el mapa lo recupera) o de un estado intermedio de una rama
+     que nunca fue PR, y ese no vuelve por mucho que se sincronice. */
+  const note = orphans.length
+    ? `${REVIEW_NOTE}; ${orphans.length} review${orphans.length === 1 ? "" : "s"} sobre commits que ya no están en HEAD (rebase o squash); si salieron de una PR mergeada, \`npm run stations -- --sync-merges\` los recupera`
+    : REVIEW_NOTE;
+  if (!lastReviewed.length) return { lastReviewed, pending: [], command: null, orphans, note };
   const tos = lastReviewed.map((r) => r.sha);
   const pending = (git(["rev-list", "HEAD", ...tos.map((t) => `^${t}`)]) || "").split("\n").filter(Boolean);
   const from = pending.length ? commandFrom(git, tos) : null;
-  if (!from) return { lastReviewed, pending, command: null, note: REVIEW_NOTE };
+  if (!from) return { lastReviewed, pending, command: null, orphans, note };
   const inRange = (git(["rev-list", "--count", `${from}..HEAD`]) || "0");
   const extra = Number(inRange) - pending.length;
-  return { lastReviewed, pending, command: `/adversarial-review ${from.slice(0, 7)}..HEAD`, note: extra > 0 ? `${REVIEW_NOTE}; incluye ${extra} ya revisados` : REVIEW_NOTE };
+  return { lastReviewed, pending, command: `/adversarial-review ${from.slice(0, 7)}..HEAD`, orphans, note: extra > 0 ? `${note}; incluye ${extra} ya revisados` : note };
+}
+
+/* ------------------------------------------- el mapa rama → main --- */
+
+/* Dónde vive el mapa: junto a la salud, en el estado de la máquina. No es
+   del repo (no viaja en un commit) ni de la evidencia (no lo escribe
+   adversarial-review). */
+export function defaultMergeFile(env = process.env) {
+  return env.JARVIIS_MERGE_FILE || join(env.HOME || homedir(), ".local", "state", "jarviis", "merged-commits.json");
+}
+
+/* { <sha de rama>: { mergedAs, pr, at } }. Un archivo ausente o ilegible es
+   un mapa vacío: sin mapa la deuda se calcula como siempre. */
+export function readMergeMap(file) {
+  if (!file || !existsSync(file)) return {};
+  try {
+    const body = JSON.parse(readFileSync(file, "utf8"));
+    return body && typeof body === "object" && !Array.isArray(body) ? body : {};
+  } catch { return {}; }
+}
+
+/* syncMerges: qué commit de rama entró en main con qué commit, según
+   GitHub. Es una lectura, no una promesa nuestra: `gh` responde por cada PR
+   mergeada sus commits y su merge commit, y con squash ese merge commit es
+   el único que queda en main. Se acumula sobre lo que ya había: las PRs
+   viejas salen de la ventana de `gh` y su traducción no debe perderse.
+
+   → { ok, prs, pairs, file, why } */
+export function syncMerges({ cwd = process.cwd(), file = defaultMergeFile(process.env), gh, limit = 25 } = {}) {
+  gh ||= (args) => execFileSync("gh", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  /* Pedir los commits de N PRs cuesta nodos en el GraphQL de GitHub, y el
+     techo (500.000) se cruza con una ventana que aquí parecía módica: 50 PRs
+     de este repo piden 505.050. Bajar a la mitad y reintentar es preferible
+     a fijar un número mágico que otro repo volverá a cruzar. */
+  let prs, ventana = limit, why = null;
+  while (ventana >= 5) {
+    try {
+      prs = JSON.parse(gh(["pr", "list", "--state", "merged", "--limit", String(ventana), "--json", "number,mergedAt,mergeCommit,commits"]));
+      why = null;
+      break;
+    } catch (e) {
+      why = e.message;
+      if (!/exceeds the maximum limit|maximum limit of/i.test(String(e.message))) break;
+      ventana = Math.floor(ventana / 2);
+      prs = undefined;
+    }
+  }
+  if (!prs) return { ok: false, prs: 0, pairs: 0, file, why: `no se pudo preguntar a gh por las PRs mergeadas: ${oneLine(why)}` };
+  const map = readMergeMap(file);
+  let pairs = 0, contadas = 0;
+  for (const pr of Array.isArray(prs) ? prs : []) {
+    const mergedAs = pr?.mergeCommit?.oid;
+    if (!mergedAs) continue;
+    contadas++;
+    for (const c of pr.commits || []) {
+      if (!c?.oid || c.oid === mergedAs) continue;
+      map[c.oid] = { mergedAs, pr: pr.number, at: pr.mergedAt };
+      pairs++;
+    }
+  }
+  mkdirSync(dirname(file), { recursive: true });
+  writeFileSync(file, JSON.stringify(map, null, 2) + "\n");
+  return { ok: true, prs: contadas, pairs, file };
 }
 
 /* El `from` del comando (D11). Un `to` alcanzado por otro `to` no aporta
@@ -216,13 +308,22 @@ const invokedDirectly = (() => {
 })();
 if (invokedDirectly) {
   const argv = process.argv.slice(2);
-  let json = false, check = false, probe = false, cwd;
+  let json = false, check = false, probe = false, sync = false, cwd;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--json") json = true;
     else if (argv[i] === "--check") check = true;
     else if (argv[i] === "--probe") probe = true;
+    else if (argv[i] === "--sync-merges") sync = true;
     else if (argv[i] === "--cwd") cwd = argv[++i];
-    else { process.stderr.write(`stations: flag desconocida ${argv[i]}\nuso: stations.mjs [--json] [--check] [--probe] [--cwd DIR]\n`); process.exit(2); }
+    else { process.stderr.write(`stations: flag desconocida ${argv[i]}\nuso: stations.mjs [--json] [--check] [--probe] [--sync-merges] [--cwd DIR]\n`); process.exit(2); }
+  }
+  /* Antes de medir: traer de GitHub qué commit de rama entró con qué commit
+     de main, para que un review aplastado siga contando. Es red y escribe,
+     así que solo cuando se pide. */
+  if (sync) {
+    const m = syncMerges({ cwd: cwd || process.cwd() });
+    if (!m.ok) { process.stderr.write(m.why + "\n"); process.exit(1); }
+    process.stderr.write(`merges: ${m.pairs} commits de ${m.prs} PRs mergeadas en ${m.file}\n`);
   }
   const r = await collectStations({ cwd, probe });
   process.stdout.write(json ? JSON.stringify(r, null, 2) + "\n" : renderStations(r));

@@ -52,6 +52,18 @@ contra la máquina real.
   `providers/index.mjs`.
 - Toda afirmación sobre código lleva ruta de archivo y línea.
 
+## Explorar sin fabricar errores
+
+Un comando encadenado (`cat a; cat b; sed …`) sale con el código del **último** miembro,
+así que si el último toca un archivo que no existe o un `grep` no encuentra nada, el
+harness marca todo el bloque como error aunque lo que se quería leer llegó entero. Seis
+bloques así en un solo Build de septiembre: ruido que se lee como trabajo roto y cuesta
+confianza al mirar la lista de llamadas.
+
+Al explorar: un comando por llamada, o `|| true` al final del encadenado. Y si algo no
+está donde el prompt decía (`providers/README.md`, `providers/test/helpers.mjs`), es un
+hueco de documentación del repo que se dice, no se busca dos veces.
+
 ## Git y PRs
 
 - Ramas en kebab-case descriptivo, sin prefijo de tipo; si hay issue de Linear, la

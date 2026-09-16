@@ -533,7 +533,11 @@ if (invokedDirectly) {
   const [cmd, ...rest] = argv;
   const out = (o) => process.stdout.write(JSON.stringify(o, null, 2) + "\n");
   const has = (flag) => rest.includes(flag);
-  const words = rest.filter((a) => !a.startsWith("--"));
+  /* Los argumentos sueltos: ni opciones ni el valor de una opción. Filtrar
+     solo por el prefijo `--` metía el valor de `--description` entre los
+     posicionales, y con él todo lo que un valor sin comillas arrastra. */
+  const CON_VALOR = new Set(["--team", "--title", "--description", "--label", "--priority", "--blocked-by", "--assignee", "--spec"]);
+  const words = rest.filter((a, n) => !a.startsWith("--") && !(CON_VALOR.has(rest[n - 1]) && !a.startsWith("--")));
   /* Las opciones se declaran por comando y lo que no está declarado es un
      error, no un argumento que se descarta: `--dry-runn` tiene que doler
      aquí y no en la card de Andy (hallazgo del review adversarial). El valor
@@ -555,6 +559,20 @@ if (invokedDirectly) {
     if (arg === "-") return readFileSync(0, "utf8").trim();
     if (arg === undefined) throw new Error(`falta ${qué} (o \`-\` para leerlo de stdin)`);
     return arg;
+  };
+  /* El texto posicional es TODO lo que queda, unido por espacios, como el
+     nombre de estado en `move`. Quedarse con la primera palabra publicaba
+     "empiezo" en la card por un `comment JAR-15 empiezo con el plan` sin
+     comillas, y salía 0: pérdida silenciosa en la superficie que lee Andy.
+     `-` es excluyente porque el texto viene de stdin: con palabras detrás,
+     lo que se publicaría no es lo que se escribió. */
+  const restoComoTexto = (ws) => {
+    if (!ws.length) return undefined;
+    if (ws[0] === "-") {
+      if (ws.length > 1) { const e = new Error(`\`-\` lee el texto de stdin; sobra "${ws.slice(1).join(" ")}" detrás`); e.exit = 2; throw e; }
+      return "-";
+    }
+    return ws.join(" ");
   };
   /* --flag valor, repetible: --label a --label b → ["a", "b"]. */
   const flags = (name) => rest.flatMap((a, n) => (a === name && rest[n + 1] !== undefined && !rest[n + 1].startsWith("--") ? [rest[n + 1]] : []));
@@ -580,12 +598,12 @@ if (invokedDirectly) {
     }
     if (cmd === "resolve") out(await resolveTeam(words[0]));
     else if (cmd === "issue") out(await issueInfo(words[0]));
-    else if (cmd === "comment") out(await comment(words[0], textOf(words[1], "el texto del comentario"), { dryRun }));
+    else if (cmd === "comment") out(await comment(words[0], textOf(restoComoTexto(words.slice(1)), "el texto del comentario"), { dryRun }));
     else if (cmd === "comment-draft") {
       const file = words[0];
       if (!file) throw new Error("comment-draft necesita el borrador (docs/tickets/<slug>.json)");
       const plan = JSON.parse(readFileSync(file, "utf8"));
-      const r = await commentDraft(plan, textOf(words[1], "el texto del comentario"), { dryRun });
+      const r = await commentDraft(plan, textOf(restoComoTexto(words.slice(1)), "el texto del comentario"), { dryRun });
       /* Los recibos se escriben también cuando el paso paró a mitad: lo
          comentado hasta ahí es justo lo que no hay que repetir. */
       if (!r.dryRun && r.commented.length) writeFileSync(file, JSON.stringify(withComments(plan, r), null, 2) + "\n");
@@ -595,6 +613,10 @@ if (invokedDirectly) {
     else if (cmd === "move") out(await move(words[0], words.slice(1).join(" "), { dryRun }));
     else if (cmd === "link") out(await link(words[0], words[1], words[2], { dryRun }));
     else if (cmd === "create") {
+      /* `create` no tiene posicionales: todo llega por opción. Una palabra
+         suelta es el resto de un valor sin comillas (`--description hola que
+         tal`), que hasta ahora se descartaba en silencio. */
+      if (words.length) { const e = new Error(`\`create\` no lleva argumentos sueltos; sobra "${words.join(" ")}" (¿falta entrecomillar el valor de una opción, o usar \`-\` para el texto?)`); e.exit = 2; throw e; }
       const priority = flag("--priority");
       if (priority !== undefined && !/^[0-4]$/.test(priority)) throw new Error(`--priority es un entero 0-4; llegó "${priority}"`);
       const assignee = flag("--assignee");

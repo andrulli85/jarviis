@@ -226,6 +226,12 @@ Linear: `--dry-runn` tiene que doler en la terminal, no en la card de Andy.
   stdin: un comentario de varias frases no se escapa a mano. Qué se comenta y
   cuándo lo fija la spec (la regla única: solo si Andy tomaría una decisión
   distinta al leerlo), no este script.
+- **El texto posicional se toma entero**, unido por espacios, en `comment` y en
+  `comment-draft`: `comment JAR-15 empiezo con el plan` publica la línea
+  completa, no su primera palabra. `-` es excluyente (lee stdin y no admite
+  palabras detrás) y `create` no lleva argumentos sueltos: una palabra suelta
+  ahí es el resto de un valor sin comillas y sale **2**. Un texto a medias en
+  la card se lee como una frase entera, y nadie lo nota.
 - **`create` y `publish`** salen **1** con la causa en stderr cuando el informe
   vuelve `ok:false` (una relación que no se creó, un issue que aterrizó en
   Done), con el informe entero en stdout: hay issues ya creados y reintentar a

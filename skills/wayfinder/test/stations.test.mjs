@@ -178,5 +178,5 @@ test("Review pendiente al día y sin evidencia; un solo commit va en singular", 
 
 test("collectStations calcula la deuda con reviewDebt sobre cwd y evidenceDir: sin evidencia en el mundo falso sale sin evidencia", async () => {
   const r = await collectStations(world());
-  assert.deepEqual(r.review, { lastReviewed: [], pending: [], command: null, note: NOTE });
+  assert.deepEqual(r.review, { lastReviewed: [], pending: [], command: null, orphans: [], note: NOTE });
 });
