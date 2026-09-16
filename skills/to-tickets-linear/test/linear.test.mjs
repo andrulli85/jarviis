@@ -5,7 +5,8 @@ import { linearStub } from "./stub.mjs";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join, dirname, relative } from "node:path";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "linear.mjs");
@@ -527,4 +528,28 @@ test("ningún otro archivo de skills/ ni providers/ llama a Linear: la URL y el 
     if (/\bfetch(Fn)?\s*\([^)]*JARVIIS_LINEAR_URL/.test(text)) culpables.push(`${rel}: un fetch propio a Linear`);
   }
   assert.deepEqual(culpables, [], `todo lo que habla con Linear pasa por ${mine[0]}`);
+});
+
+/* Hallazgo del review adversarial de esta rama (Codex, 2026-09-15): la rama
+   create del CLI imprimía un informe ok:false y salía 0, así que un create
+   cuyo issue nace pero cuya relación falla pasaba por bueno. Un informe que
+   se reporta no es un informe que se comprueba; publish ya salía 1, pero sin
+   la causa en stderr, que es donde el contrato dice que va. */
+test("CLI create y publish: un informe ok:false sale 1 con la causa en stderr, y el JSON sigue yendo a stdout", async () => {
+  await withStub({ failOn: "IssueRelationCreate", issues: [TODO("JAR-14")] }, async ({ env }) => {
+    await fails(["create", "--team", "JAR", "--title", "x", "--description", "y", "--blocked-by", "JAR-14"], env, (e) => {
+      assert.equal(e.status, 1, "sale 1");
+      assert.match(e.stderr, /boom on IssueRelationCreate/, "la causa, en stderr");
+      assert.equal(JSON.parse(e.stdout).ok, false, "y el informe entero en stdout");
+      assert.equal(JSON.parse(e.stdout).created.length, 1, "el issue sí nació: reintentar a ciegas lo duplicaría");
+      return true;
+    });
+  });
+  await withStub({ failOn: "IssueRelationCreate" }, async ({ env }) => {
+    const file = join(tmpdir(), `plan-${Date.now()}.json`);
+    writeFileSync(file, JSON.stringify(plan()));
+    await fails(["publish", file], env, (e) => e.status === 1 && /boom on IssueRelationCreate/.test(e.stderr));
+    assert.ok(JSON.parse(readFileSync(file, "utf8")).issues.some((i) => i.key), "el borrador guarda lo que sí aterrizó");
+    rmSync(file);
+  });
 });

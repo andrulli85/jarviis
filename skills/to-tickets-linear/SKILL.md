@@ -221,6 +221,10 @@ Todos: ids resueltos en la corrida, JSON en stdout, causa en stderr,
   stdin: un comentario de varias frases no se escapa a mano. Qué se comenta y
   cuándo lo fija la spec (la regla única: solo si Andy tomaría una decisión
   distinta al leerlo), no este script.
+- **`create` y `publish`** salen **1** con la causa en stderr cuando el informe
+  vuelve `ok:false` (una relación que no se creó, un issue que aterrizó en
+  Done), con el informe entero en stdout: hay issues ya creados y reintentar a
+  ciegas los duplica. Un informe impreso no es un informe comprobado.
 - **`create`** es azúcar sobre `publish` (D11): construye un plan de un issue
   y lo pasa por el mismo camino, así que hereda backlog, relectura, categoría
   y relaciones. Para un issue derivado en Build, no para desglosar una spec:

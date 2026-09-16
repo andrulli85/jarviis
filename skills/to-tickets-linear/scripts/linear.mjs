@@ -467,6 +467,11 @@ if (invokedDirectly) {
   const flag = (name) => flags(name).at(-1);
 
   const dryRun = has("--dry-run");
+  /* Un informe de publish (también el de create, que es publish) puede volver
+     ok:false con issues ya creados: se imprime entero, la causa va a stderr y
+     el exit es 1. Imprimirlo y salir 0 deja seguir a quien lo llamó sin la
+     relación que pidió (hallazgo del review adversarial, 2026-09-15). */
+  const report = (r) => { out(r); if (r.ok === false) { console.error(r.why); process.exit(1); } };
   try {
     if (cmd === "resolve") out(await resolveTeam(words[0]));
     else if (cmd === "issue") out(await issueInfo(words[0]));
@@ -479,7 +484,7 @@ if (invokedDirectly) {
       if (priority !== undefined && !/^[0-4]$/.test(priority)) throw new Error(`--priority es un entero 0-4; llegó "${priority}"`);
       const assignee = flag("--assignee");
       if (assignee !== undefined && assignee !== "me") throw new Error(`--assignee solo admite "me"; llegó "${assignee}"`);
-      out(await create({
+      report(await create({
         team: flag("--team"), title: flag("--title"),
         description: textOf(flag("--description"), "la descripción (--description)"),
         labels: flags("--label"), blockedBy: flags("--blocked-by"), spec: flag("--spec"),
@@ -494,8 +499,7 @@ if (invokedDirectly) {
          de camino también, porque lo creado hasta ahí es lo que hay que
          saber para no duplicarlo en un reintento. */
       if (!r.dryRun && r.created.length) writeFileSync(file, JSON.stringify(withKeys(plan, r), null, 2) + "\n");
-      out(r);
-      if (r.ok === false) process.exit(1);
+      report(r);
     } else {
       console.error(USO);
       process.exit(2);
