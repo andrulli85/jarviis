@@ -37,7 +37,7 @@ import { spawnSync } from "node:child_process";
    ese prefijo en cualquier caja. Una URL de Linear manda: el slug del
    workspace (linear.app/jarviis-2/...) también parece una clave y no lo es. */
 import { issueRegex, slugify } from "../../wayfinder/scripts/route.mjs";
-import { apiKey, URL_DEFAULT } from "../../to-tickets-linear/scripts/linear.mjs";
+import { apiKey, issueInfo } from "../../to-tickets-linear/scripts/linear.mjs";
 const ISSUE_URL = /linear\.app\/[^\s/]+\/issue\/([A-Za-z][A-Za-z0-9]{1,9}-\d+)/;
 
 export function parseKey(text, env = process.env) {
@@ -60,24 +60,17 @@ export function branchName({ key, spec, title }) {
   return group ? `${group}/${tail}` : tail;
 }
 
-/* Título y spec del issue, leídos de Linear cuando hay clave de API. Mejor
-   esfuerzo: sin clave, sin red o con error devuelve {} y el prompt le deja la
-   regla al agente en vez del nombre exacto. Nunca lanza. */
-export async function fetchIssue(key, { env = process.env, fetchFn = globalThis.fetch, timeoutMs = 3000 } = {}) {
+/* Título y spec del issue, leídos por `issueInfo` de linear.mjs (D12: la
+   única puerta al tablero; aquí no hay GraphQL). Mejor esfuerzo: sin clave,
+   sin red o con error devuelve {} y el prompt le deja la regla al agente en
+   vez del nombre exacto. Nunca lanza. */
+export async function fetchIssue(key, { env = process.env } = {}) {
   let token = null;
   try { token = apiKey(env); } catch { token = null; }
   if (!token) return {};
   try {
-    const r = await fetchFn(env.JARVIIS_LINEAR_URL || URL_DEFAULT, {
-      method: "POST", headers: { Authorization: token, "Content-Type": "application/json" },
-      body: JSON.stringify({ query: "query($id:String!){ issue(id:$id){ title description } }", variables: { id: key } }),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const j = await r.json();
-    const issue = j && j.data && j.data.issue;
-    if (!issue) return {};
-    const m = /Spec:\s*`?([^`\n]+?)`?\s*$/m.exec(issue.description || "");
-    return { title: issue.title || null, spec: m ? m[1].trim() : null };
+    const { title, spec } = await issueInfo(key, env);
+    return { title, spec };
   } catch { return {}; }
 }
 

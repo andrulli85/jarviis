@@ -197,6 +197,57 @@ identificador, no los recrea) y crea solo los que faltan y sus relaciones.
 Sin `--resume`, un borrador con claves se rechaza: volver a publicarlo tal
 cual duplica.
 
+## Comandos del tablero
+
+`scripts/linear.mjs` es la **única puerta al tablero** (D7 de
+`docs/specs/linear-comentarios-para-humanos.md`): comentar, crear, asignar,
+mover y enlazar pasan por aquí. Ningún skill ni prompt escribe GraphQL a
+mano; si algo falta, se añade un comando, no una query suelta.
+
+```
+node <dir>/scripts/linear.mjs comment <clave> <texto | ->
+node <dir>/scripts/linear.mjs create --team <clave|nombre> --title "…" --description <texto | -> \
+     [--label L]… [--priority 0-4] [--blocked-by CLAVE]… [--assignee me] [--spec docs/specs/x.md]
+node <dir>/scripts/linear.mjs assign <clave> [me]
+node <dir>/scripts/linear.mjs move <clave> "<nombre de estado>"
+node <dir>/scripts/linear.mjs link <A> blocks <B>
+node <dir>/scripts/linear.mjs issue <clave>
+```
+
+Todos: ids resueltos en la corrida, JSON en stdout, causa en stderr. Los que
+escriben aceptan `--dry-run`, que renderiza el payload sin escribir; `issue` y
+`resolve` no lo admiten porque son de solo lectura y no hay nada que ensayar.
+Cada comando declara sus opciones y una desconocida sale **2** sin tocar
+Linear: `--dry-runn` tiene que doler en la terminal, no en la card de Andy.
+
+- **`comment`** devuelve `{ key, commentId, url }`. Con `-` el texto entra por
+  stdin: un comentario de varias frases no se escapa a mano. Qué se comenta y
+  cuándo lo fija la spec (la regla única: solo si Andy tomaría una decisión
+  distinta al leerlo), no este script.
+- **`create` y `publish`** salen **1** con la causa en stderr cuando el informe
+  vuelve `ok:false` (una relación que no se creó, un issue que aterrizó en
+  Done), con el informe entero en stdout: hay issues ya creados y reintentar a
+  ciegas los duplica. Un informe impreso no es un informe comprobado.
+- **`create`** es azúcar sobre `publish` (D11): construye un plan de un issue
+  y lo pasa por el mismo camino, así que hereda backlog, relectura, categoría
+  y relaciones. Para un issue derivado en Build, no para desglosar una spec:
+  eso es el proceso entero de arriba. `--blocked-by JAR-14` acepta la clave de
+  un issue que ya existe.
+- **`assign`** solo admite `me` (el dueño de la clave de API). Asignar a otro
+  es una decisión de Andy en el tablero.
+- **`move`** resuelve el estado por nombre entre los del equipo del issue y
+  **rechaza las categorías de cierre** con exit 3 (D8): Done y Canceled los
+  pone la PR de Build al mergear, nunca un comando. Ese código lo distingue de
+  un nombre de estado mal escrito, que sale 1.
+- **`link`** solo crea `blocks` y es idempotente: repetirlo devuelve
+  `created: false` sin crear una segunda relación.
+- **`issue`** devuelve `{ type, name, pr, title, spec }`; es lo que leen el
+  wayfinder (estado y PR) y `build-kickoff` (título y spec).
+
+`publish` asigna cada issue y cada subtarea al viewer (D7) y acepta en
+`blockedBy` la clave de un issue externo, resuelto por identificador antes de
+la primera escritura.
+
 ### 6. Cerrar el hilo en la spec
 
 Con el informe `ok:true`, dos escrituras fuera de Linear y ninguna más:

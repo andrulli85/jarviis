@@ -16,9 +16,15 @@ export async function linearStub(world = {}) {
     labels: world.labels || [{ id: "lb-fabrica", name: "fabrica", team: { id: "team-1" } }, { id: "lb-bug", name: "Bug", team: null }, { id: "lb-ops", name: "ops-only", team: { id: "team-2" } }],
     teams: world.teams || null,
     issues: new Map(),
-    /* Issues que ya existen antes de la corrida, para `query IssueState`:
-       [{ identifier, state: { name, type }, attachments: [{ sourceType, metadata }] }]. */
-    existing: world.issues || [],
+    /* Issues que ya existen antes de la corrida, para `query IssueState`,
+       `query IssueRead` y las mutaciones de los comandos del tablero:
+       [{ identifier, title?, description?, state: { name, type }, attachments?, relations? }].
+       Cada uno recibe id, url, equipo y estado con id, como los devolvería Linear. */
+    existing: (world.issues || []).map((i) => ({
+      id: i.id || "iss-" + i.identifier, url: i.url || "https://linear.app/x/issue/" + i.identifier,
+      team: i.team || { id: "team-1", key: "JAR" }, assignee: i.assignee || null, relations: i.relations || [],
+      ...i, state: { id: "st-" + (i.state.name || "").toLowerCase().replace(/\s+/g, "-"), ...i.state },
+    })),
     /* Respuesta retrasada, para probar el timeout del cliente. */
     delayMs: world.delayMs || 0,
     mutations: [],
@@ -31,6 +37,9 @@ export async function linearStub(world = {}) {
     log: world.log || null,
   };
   const note = (m) => { state.mutations.push(m); if (state.log) appendFileSync(state.log, JSON.stringify(m) + "\n"); };
+  /* Por id o por identificador, entre los creados en la corrida y los que ya existían. */
+  const findIssue = (ref) => state.issues.get(ref) || [...state.issues.values()].find((x) => x.identifier === ref)
+    || state.existing.find((x) => x.id === ref || x.identifier === ref);
   const server = createServer(async (req, res) => {
     const chunks = []; for await (const c of req) chunks.push(c);
     const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
@@ -43,7 +52,7 @@ export async function linearStub(world = {}) {
       const i = state.existing.find((x) => x.identifier === v.key);
       /* Linear responde con un error, no con null, a un identificador que no existe. */
       if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue - Could not find referenced Issue." }] })); }
-      return reply({ issue: { identifier: i.identifier, state: i.state, attachments: { nodes: i.attachments || [] } } });
+      return reply({ issue: { identifier: i.identifier, title: i.title || null, description: i.description || "", state: i.state, attachments: { nodes: i.attachments || [] } } });
     }
     if (state.failOn && q.includes(state.failOn)) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "boom on " + state.failOn }] })); }
     if (/query Viewer/.test(q)) return reply({ viewer: { id: "u-1", name: "Andres", email: "a@x" } });
@@ -62,12 +71,29 @@ export async function linearStub(world = {}) {
       return reply({ issueCreate: { success: true, issue: { id: issue.id, identifier: issue.identifier, url: issue.url } } });
     }
     if (/query IssueRead/.test(q)) {
-      const i = state.issues.get(v.id) || [...state.issues.values()].find((x) => x.identifier === v.id);
-      return reply({ issue: i ? { ...i, relations: { nodes: (i.relations || []) } } : null });
+      const i = findIssue(v.id);
+      /* Un identificador que no existe es un error en Linear, no un null. */
+      if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue - Could not find referenced Issue." }] })); }
+      return reply({ issue: { ...i, labels: i.labels || { nodes: [] }, relations: { nodes: (i.relations || []) } } });
+    }
+    if (/mutation IssueUpdate/.test(q)) {
+      note({ op: "issueUpdate", id: v.id, input: v.input });
+      const i = findIssue(v.id);
+      if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue" }] })); }
+      if (v.input.assigneeId) i.assignee = { id: v.input.assigneeId, name: "Andres" };
+      if (v.input.stateId) { const st = state.states.find((s) => s.id === v.input.stateId); if (st) i.state = { id: st.id, name: st.name, type: st.type }; }
+      return reply({ issueUpdate: { success: true, issue: { id: i.id, identifier: i.identifier, state: i.state, assignee: i.assignee } } });
+    }
+    if (/mutation CommentCreate/.test(q)) {
+      note({ op: "commentCreate", input: v.input });
+      const i = findIssue(v.input.issueId);
+      if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue" }] })); }
+      const id = "cm-" + (++state.seq);
+      return reply({ commentCreate: { success: true, comment: { id, url: i.url + "#comment-" + id } } });
     }
     if (/mutation IssueRelationCreate/.test(q)) {
       note({ op: "issueRelationCreate", input: v.input });
-      const a = state.issues.get(v.input.issueId), b = state.issues.get(v.input.relatedIssueId);
+      const a = findIssue(v.input.issueId), b = findIssue(v.input.relatedIssueId);
       if (a && b) { (a.relations ||= []).push({ type: v.input.type, relatedIssue: { id: b.id, identifier: b.identifier } }); }
       return reply({ issueRelationCreate: { success: true, issueRelation: { id: "rel-" + state.mutations.length } } });
     }

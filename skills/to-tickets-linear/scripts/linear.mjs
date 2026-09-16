@@ -3,7 +3,15 @@
 
    node linear.mjs resolve <equipo>                  → tabla de resolución (JSON)
    node linear.mjs publish <plan.json> [--dry-run] [--resume]   → informe (JSON)
-   node linear.mjs issue <clave>                     → estado y PR adjunta (JSON)
+   node linear.mjs issue <clave>                     → estado, PR, título y spec (JSON)
+   node linear.mjs comment <clave> <texto | ->       → { key, commentId, url }
+   node linear.mjs create --team … --title … --description <texto | -> …  → { key, url }
+   node linear.mjs assign <clave> [me]               → { key, assignee }
+   node linear.mjs move <clave> <estado>             → { key, from, state }
+   node linear.mjs link <A> blocks <B>               → { blocker, blocked, created }
+
+   Es la única puerta al tablero (D7 de docs/specs/linear-comentarios-para-humanos.md):
+   ningún skill ni prompt escribe GraphQL a mano.
 
    GraphQL directo contra api.linear.app con LINEAR_API_KEY. Sin MCP: el MCP
    oficial pide OAuth en sesión interactiva, y este script tiene que correr
@@ -105,6 +113,13 @@ export async function resolveTeam(words, env = process.env) {
 
 /* --------------------------------------------------------------- order --- */
 
+/* Un blockedBy con forma de clave (JAR-14) que no es ref del plan es un
+   issue que ya existe en Linear (D11: así `create --blocked-by` y un issue
+   derivado en Build cuelgan de su bloqueador real). Se resuelve por
+   identificador antes de escribir; no entra en el orden. */
+const KEY_SHAPE = /^[A-Za-z][A-Za-z0-9]{1,9}-\d+$/;
+export const isExternalKey = (ref, byRef) => !byRef.has(ref) && KEY_SHAPE.test(String(ref));
+
 /* Bloqueadores primero, para que cada relación apunte a un issue que ya
    existe. Estable: entre libres, el orden del plan. */
 export function order(issues) {
@@ -115,7 +130,7 @@ export function order(issues) {
     byRef.set(i.ref, i);
   }
   for (const i of issues) for (const b of i.blockedBy || []) {
-    if (!byRef.has(b)) throw new Error(`${i.ref} dice estar bloqueado por ${b}, que no está en el plan`);
+    if (!byRef.has(b) && !isExternalKey(b, byRef)) throw new Error(`${i.ref} dice estar bloqueado por ${b}, que no está en el plan`);
   }
   const out = [], state = new Map();
   const visit = (i, path) => {
@@ -123,7 +138,7 @@ export function order(issues) {
     if (s === "done") return;
     if (s === "visiting") throw new Error(`ciclo de bloqueos: ${[...path, i.ref].join(" → ")}`);
     state.set(i.ref, "visiting");
-    for (const b of i.blockedBy || []) visit(byRef.get(b), [...path, i.ref]);
+    for (const b of i.blockedBy || []) if (byRef.has(b)) visit(byRef.get(b), [...path, i.ref]);
     state.set(i.ref, "done");
     out.push(i);
   };
@@ -138,6 +153,8 @@ const M_CREATE = `mutation IssueCreate($input: IssueCreateInput!) {
 const Q_ISSUE = `query IssueRead($id: String!) { issue(id: $id) {
   id identifier title url description
   state { id name type }
+  team { id key }
+  assignee { id name }
   parent { id }
   labels { nodes { id name } }
   relations { nodes { type relatedIssue { id identifier } } }
@@ -170,6 +187,12 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
   }
   const res = await resolveTeam(plan.team, env);
   const labelId = new Map(res.labels.map((l) => [l.name.toLowerCase(), l.id]));
+  const byRef = new Set(ordered.map((i) => i.ref));
+  const externalKeys = [...new Set(ordered.flatMap((i) => (i.blockedBy || []).filter((b) => isExternalKey(b, byRef))))];
+  /* Los bloqueadores externos se leen antes de la primera escritura, también
+     en dry-run: una clave que no existe es un plan inválido, no un fallo a mitad. */
+  const external = [];
+  for (const key of externalKeys) { const e = await readIssue(key, env); external.push({ key, id: e.id }); }
 
   const payloads = ordered.filter((i) => !i.key).map((i) => {
     const labelIds = (i.labels || []).map((name) => {
@@ -180,9 +203,11 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
     if (i.priority !== undefined && !(Number.isInteger(i.priority) && i.priority >= 0 && i.priority <= 4)) {
       throw new Error(`priority de ${i.ref} debe ser un entero 0-4 (0 sin prioridad, 1 urgente … 4 baja); llegó ${JSON.stringify(i.priority)}`);
     }
-    const input = { teamId: res.team.id, title: i.title, description: description(i, plan), stateId: res.backlogState.id, labelIds };
+    /* D7: todo lo que crea la fábrica sale asignado al dueño de la clave. */
+    const base = { teamId: res.team.id, stateId: res.backlogState.id, labelIds, assigneeId: res.viewer.id };
+    const input = { ...base, title: i.title, description: description(i, plan) };
     if (i.priority !== undefined) input.priority = i.priority;
-    const subtasks = (i.subtasks || []).map((s) => ({ title: s.title, input: { teamId: res.team.id, title: s.title, description: description(s, plan), stateId: res.backlogState.id, labelIds } }));
+    const subtasks = (i.subtasks || []).map((s) => ({ title: s.title, input: { ...base, title: s.title, description: description(s, plan) } }));
     return { ref: i.ref, input, subtasks, blockedBy: i.blockedBy || [] };
   });
   const isNew = new Set(payloads.map((p) => p.ref));
@@ -191,10 +216,10 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
     if (isNew.has(i.ref) || isNew.has(b)) relations.push({ blocker: b, blocked: i.ref });
   }
 
-  const report = { dryRun, resume, team: res.team, backlogState: res.backlogState, payloads, relations, created: [], relationsCreated: [], skipped: keyed.map((i) => ({ ref: i.ref, key: i.key })) };
+  const report = { dryRun, resume, team: res.team, backlogState: res.backlogState, payloads, relations, external, created: [], relationsCreated: [], skipped: keyed.map((i) => ({ ref: i.ref, key: i.key })) };
   if (dryRun) return report;
 
-  const idOf = new Map();
+  const idOf = new Map(external.map((e) => [e.key, e.id]));
   try {
     for (const i of keyed) {
       const existing = (await gql(Q_ISSUE, { id: i.key }, env)).issue;
@@ -240,6 +265,22 @@ export async function publish(plan, { env = process.env, dryRun = false, resume 
   return report;
 }
 
+/* create: un issue suelto (un derivado en Build, un bug visto de paso) por
+   el mismo camino que publish (D11): plan de un issue, backlog, relectura,
+   categoría, relaciones con bloqueadores existentes. Devuelve el informe de
+   publish con `key` y `url` arriba; en dry-run, el informe con el payload. */
+export async function create({ team, title, description, labels = [], priority, blockedBy = [], spec } = {}, { env = process.env, dryRun = false } = {}) {
+  if (!team) throw new Error("create necesita el equipo (--team <clave|nombre>)");
+  if (!String(title || "").trim()) throw new Error("create necesita un título (--title)");
+  const issue = { ref: "issue", title: String(title).trim(), description: String(description || ""), labels, blockedBy };
+  if (priority !== undefined) issue.priority = priority;
+  const plan = { team, issues: [issue] };
+  if (spec) plan.spec = spec;
+  const report = await publish(plan, { env, dryRun });
+  const c = report.created[0];
+  return { key: c?.key || null, url: c?.url || null, ...report };
+}
+
 /* El borrador con las claves que aterrizaron, para reescribirlo en
    docs/tickets/<slug>.json: un borrador con claves ya salió; sin ellas, no.
    Pura: el que escribe el archivo es el CLI. */
@@ -265,21 +306,117 @@ function verify(report, payloads, relations) {
   return { count: report.created.length, expected: payloads.length, doneCategory, relationsMissing };
 }
 
+/* ------------------------------------------------ comandos del tablero --- */
+
+/* Un issue por clave, con lo que los comandos necesitan (id, equipo,
+   estado, asignado, relaciones). Lanza con la clave si no existe: Linear
+   responde con error a un identificador desconocido, y algún stub con null. */
+async function readIssue(key, env) {
+  let data;
+  try { data = await gql(Q_ISSUE, { id: key }, env); }
+  catch (e) { if (/not found/i.test(e.message)) throw new Error(`${key} no existe en Linear`); throw e; }
+  if (!data?.issue) throw new Error(`${key} no existe en Linear`);
+  return data.issue;
+}
+
+const M_COMMENT = `mutation CommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) { success comment { id url } } }`;
+
+/* comment <clave> <texto>: el comentario que lee Andy en la card (D1-D6 lo
+   redactan; aquí solo se publica). Devuelve { key, commentId, url }. */
+export async function comment(key, body, { env = process.env, dryRun = false } = {}) {
+  const text = String(body || "").trim();
+  if (!text) throw new Error("el comentario necesita texto (argumento o stdin)");
+  const issue = await readIssue(key, env);
+  const payload = { issueId: issue.id, body: text };
+  if (dryRun) return { dryRun: true, key: issue.identifier, payload };
+  const c = (await gql(M_COMMENT, { input: payload }, env)).commentCreate;
+  if (!c?.success || !c.comment?.id) throw new Error(`commentCreate en ${key} no devolvió un comentario`);
+  return { key: issue.identifier, commentId: c.comment.id, url: c.comment.url };
+}
+
+const M_UPDATE = `mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) { success issue { id identifier state { id name type } assignee { id name } } } }`;
+
+async function update(issue, input, env) {
+  const u = (await gql(M_UPDATE, { id: issue.id, input }, env)).issueUpdate;
+  if (!u?.success || !u.issue) throw new Error(`issueUpdate en ${issue.identifier} no devolvió el issue`);
+  return u.issue;
+}
+
+/* assign <clave> [me]: el asignado pasa a ser el dueño de la clave de API.
+   Solo `me`: asignar a otro es una decisión de Andy en el tablero, no de un
+   agente. Devuelve { key, assignee }. */
+export async function assign(key, who = "me", { env = process.env, dryRun = false } = {}) {
+  if (who !== "me") throw new Error(`assign solo admite "me" (el viewer de la clave); llegó "${who}"`);
+  const issue = await readIssue(key, env);
+  const viewer = (await gql(Q_VIEWER, {}, env)).viewer;
+  const input = { assigneeId: viewer.id };
+  if (dryRun) return { dryRun: true, key: issue.identifier, payload: { id: issue.id, input } };
+  const u = await update(issue, input, env);
+  return { key: u.identifier, assignee: u.assignee ? { id: u.assignee.id, name: u.assignee.name } : null };
+}
+
+/* move <clave> <nombre de estado>: el estado se resuelve por nombre entre
+   los del equipo del issue (la misma query que resolve; los estados son del
+   equipo, no del workspace). D8: ninguna categoría de cierre, ni en dry-run:
+   el cierre lo hace la PR de Build. Ese rechazo sale con DONE_GATE_EXIT para
+   que un prompt lo distinga de un nombre mal escrito. */
+export const DONE_GATE_EXIT = 3;
+export async function move(key, stateName, { env = process.env, dryRun = false } = {}) {
+  const wanted = String(stateName || "").trim().toLowerCase();
+  if (!wanted) throw new Error("dime el estado de destino (por nombre)");
+  const issue = await readIssue(key, env);
+  const states = [...(await gql(Q_TEAM, { id: issue.team.id }, env)).team.states.nodes].sort((a, b) => a.position - b.position);
+  const target = states.find((s) => s.name.toLowerCase() === wanted);
+  if (!target) throw new Error(`el equipo ${issue.team.key} no tiene un estado "${stateName}"; hay: ${states.map((s) => s.name).join(", ")}`);
+  if (DONE_TYPES.has(target.type)) {
+    const e = new Error(`"${target.name}" es de categoría ${target.type}: el cierre de ${issue.identifier} lo hace la PR de Build al mergear, no un move`);
+    e.exit = DONE_GATE_EXIT;
+    throw e;
+  }
+  const from = { id: issue.state.id, name: issue.state.name, type: issue.state.type };
+  const input = { stateId: target.id };
+  if (dryRun) return { dryRun: true, key: issue.identifier, from, payload: { id: issue.id, input } };
+  const u = await update(issue, input, env);
+  return { key: u.identifier, from, state: { id: u.state.id, name: u.state.name, type: u.state.type } };
+}
+
+/* link <A> blocks <B>: la relación nativa que Linear pinta en la card. Solo
+   `blocks` (es la única que la fábrica usa); idempotente: si A ya bloquea a
+   B no se crea otra. Devuelve { blocker, blocked, created }. */
+export async function link(blockerKey, type, blockedKey, { env = process.env, dryRun = false } = {}) {
+  if (type !== "blocks") throw new Error(`link solo admite "blocks" (link <A> blocks <B>); llegó "${type}"`);
+  if (!blockedKey) throw new Error("link necesita los dos extremos: link <A> blocks <B>");
+  const a = await readIssue(blockerKey, env);
+  const b = await readIssue(blockedKey, env);
+  if (a.id === b.id) throw new Error(`${a.identifier} no puede bloquearse a sí mismo`);
+  const existed = (a.relations?.nodes || []).some((r) => r.type === "blocks" && r.relatedIssue?.id === b.id);
+  const payload = { issueId: a.id, relatedIssueId: b.id, type: "blocks" };
+  if (dryRun) return { dryRun: true, blocker: a.identifier, blocked: b.identifier, existed, payload };
+  if (existed) return { blocker: a.identifier, blocked: b.identifier, created: false };
+  const rc = (await gql(M_RELATION, { input: payload }, env)).issueRelationCreate;
+  if (!rc?.success) throw new Error(`no se pudo crear ${a.identifier} blocks ${b.identifier}`);
+  return { blocker: a.identifier, blocked: b.identifier, created: true };
+}
+
 /* ---------------------------------------------------------- issueState --- */
 
 const Q_STATE = `query IssueState($key: String!) { issue(id: $key) {
-  identifier
+  identifier title description
   state { name type }
   attachments { nodes { sourceType metadata } }
 } }`;
 
-/* Lo que el wayfinder necesita para enrutar un issue: { type, name, pr }.
+/* Un issue leído para enrutarlo o arrancarlo: { type, name, pr, title, spec }.
    `type` es la categoría del estado (backlog, unstarted, started, completed,
    canceled, duplicate), `name` el nombre tal cual, `pr` el `metadata.status`
-   del último attachment de GitHub ("open" | "merged") o null. Lanza sin
-   clave, sin red, o si el issue no existe; el timeout es corto (3 s) porque
-   corre en cada `/wayfinder JAR-n` y sin respuesta la ruta sigue sin él. */
-export async function issueState(key, env = process.env) {
+   del último attachment de GitHub ("open" | "merged") o null, `spec` la ruta
+   de la línea `Spec:` que publish deja al pie de la descripción (D12: la lee
+   build-kickoff, que ya no hace GraphQL propio). Lanza sin clave, sin red, o
+   si el issue no existe; el timeout es corto (3 s) porque corre en cada
+   `/wayfinder JAR-n` y sin respuesta la ruta sigue sin él. */
+export async function issueInfo(key, env = process.env) {
   let data;
   try { data = await gql(Q_STATE, { key }, env, { timeoutMs: 3000 }); }
   catch (e) {
@@ -292,7 +429,15 @@ export async function issueState(key, env = process.env) {
   if (!issue) throw new Error(`${key} no existe en Linear`);
   const github = (issue.attachments?.nodes || []).filter((a) => a.sourceType === "github");
   const pr = github.length ? (github.at(-1).metadata?.status || null) : null;
-  return { type: issue.state.type, name: issue.state.name, pr };
+  const m = /Spec:\s*`?([^`\n]+?)`?\s*$/m.exec(issue.description || "");
+  return { type: issue.state.type, name: issue.state.name, pr, title: issue.title || null, spec: m ? m[1].trim() : null };
+}
+
+/* Lo que el wayfinder necesita, y solo eso: hace spread del resultado en su
+   salida, así que aquí no entra nada más. */
+export async function issueState(key, env = process.env) {
+  const { type, name, pr } = await issueInfo(key, env);
+  return { type, name, pr };
 }
 
 /* ---------------------------------------------------------------- main --- */
@@ -301,23 +446,83 @@ import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 const invokedDirectly = (() => { try { return process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url); } catch { return false; } })();
 if (invokedDirectly) {
-  const [cmd, arg, ...rest] = process.argv.slice(2);
+  const argv = process.argv.slice(2);
+  const [cmd, ...rest] = argv;
   const out = (o) => process.stdout.write(JSON.stringify(o, null, 2) + "\n");
+  const has = (flag) => rest.includes(flag);
+  const words = rest.filter((a) => !a.startsWith("--"));
+  /* Las opciones se declaran por comando y lo que no está declarado es un
+     error, no un argumento que se descarta: `--dry-runn` tiene que doler
+     aquí y no en la card de Andy (hallazgo del review adversarial). El valor
+     de una opción nunca empieza por `--`, así que todo `--x` es una opción. */
+  const OPCIONES = {
+    resolve: [], issue: [], comment: ["--dry-run"], assign: ["--dry-run"], move: ["--dry-run"], link: ["--dry-run"],
+    publish: ["--dry-run", "--resume"],
+    create: ["--dry-run", "--team", "--title", "--description", "--label", "--priority", "--blocked-by", "--assignee", "--spec"],
+  };
+  const USO = "uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>\n"
+    + "     comment <clave> <texto | -> | create --team <equipo> --title <t> --description <texto | -> [--label L] [--priority 0-4] [--blocked-by CLAVE] [--assignee me]\n"
+    + "     assign <clave> [me] | move <clave> <estado> | link <A> blocks <B>\n"
+    + "     los que escriben aceptan --dry-run: renderizan el payload sin escribir";
+  /* Un texto largo (un comentario, una descripción) entra por stdin con `-`:
+     así no hay que escapar comillas ni saltos de línea en el prompt. */
+  const textOf = (arg, qué) => {
+    if (arg === "-") return readFileSync(0, "utf8").trim();
+    if (arg === undefined) throw new Error(`falta ${qué} (o \`-\` para leerlo de stdin)`);
+    return arg;
+  };
+  /* --flag valor, repetible: --label a --label b → ["a", "b"]. */
+  const flags = (name) => rest.flatMap((a, n) => (a === name && rest[n + 1] !== undefined && !rest[n + 1].startsWith("--") ? [rest[n + 1]] : []));
+  const flag = (name) => flags(name).at(-1);
+
+  const dryRun = has("--dry-run");
+  /* stdout a un pipe se escribe en trozos, y process.exit() no espera al
+     último: el informe llegaba cortado en 65536 bytes, justo el que dice qué
+     claves nacieron. exitCode deja que Node vacíe y salga solo. */
+  const salirCon = (code) => { process.exitCode = code; };
+  /* Un informe de publish (también el de create, que es publish) puede volver
+     ok:false con issues ya creados: se imprime entero, la causa va a stderr y
+     el exit es 1. Imprimirlo y salir 0 deja seguir a quien lo llamó sin la
+     relación que pidió (hallazgo del review adversarial, 2026-09-15). */
+  const report = (r) => { out(r); if (r.ok === false) { console.error(r.why); salirCon(1); } };
   try {
-    if (cmd === "resolve") out(await resolveTeam(arg));
-    else if (cmd === "issue") out(await issueState(arg));
+    const conocidas = OPCIONES[cmd];
+    const mala = conocidas && rest.find((a) => a.startsWith("--") && !conocidas.includes(a));
+    if (mala) {
+      const e = new Error(`opción desconocida ${mala} en \`${cmd}\`${conocidas.length ? `; admite ${conocidas.join(", ")}` : ": es de solo lectura, nunca escribe, así que no admite opciones"}`);
+      e.exit = 2;
+      throw e;
+    }
+    if (cmd === "resolve") out(await resolveTeam(words[0]));
+    else if (cmd === "issue") out(await issueInfo(words[0]));
+    else if (cmd === "comment") out(await comment(words[0], textOf(words[1], "el texto del comentario"), { dryRun }));
+    else if (cmd === "assign") out(await assign(words[0], words[1] || "me", { dryRun }));
+    else if (cmd === "move") out(await move(words[0], words.slice(1).join(" "), { dryRun }));
+    else if (cmd === "link") out(await link(words[0], words[1], words[2], { dryRun }));
+    else if (cmd === "create") {
+      const priority = flag("--priority");
+      if (priority !== undefined && !/^[0-4]$/.test(priority)) throw new Error(`--priority es un entero 0-4; llegó "${priority}"`);
+      const assignee = flag("--assignee");
+      if (assignee !== undefined && assignee !== "me") throw new Error(`--assignee solo admite "me"; llegó "${assignee}"`);
+      report(await create({
+        team: flag("--team"), title: flag("--title"),
+        description: textOf(flag("--description"), "la descripción (--description)"),
+        labels: flags("--label"), blockedBy: flags("--blocked-by"), spec: flag("--spec"),
+        ...(priority === undefined ? {} : { priority: Number(priority) }),
+      }, { dryRun }));
+    }
     else if (cmd === "publish") {
-      const plan = JSON.parse(readFileSync(arg, "utf8"));
-      const r = await publish(plan, { dryRun: rest.includes("--dry-run"), resume: rest.includes("--resume") });
+      const file = words[0];
+      const plan = JSON.parse(readFileSync(file, "utf8"));
+      const r = await publish(plan, { dryRun, resume: has("--resume") });
       /* Con claves aterrizadas, el borrador se reescribe con ellas; a mitad
          de camino también, porque lo creado hasta ahí es lo que hay que
          saber para no duplicarlo en un reintento. */
-      if (!r.dryRun && r.created.length) writeFileSync(arg, JSON.stringify(withKeys(plan, r), null, 2) + "\n");
-      out(r);
-      if (r.ok === false) process.exit(1);
+      if (!r.dryRun && r.created.length) writeFileSync(file, JSON.stringify(withKeys(plan, r), null, 2) + "\n");
+      report(r);
     } else {
-      console.error("uso: linear.mjs resolve <equipo> | publish <plan.json> [--dry-run] [--resume] | issue <clave>");
-      process.exit(2);
+      console.error(USO);
+      salirCon(2);
     }
-  } catch (e) { console.error(e.message); process.exit(1); }
+  } catch (e) { console.error(e.message); salirCon(e.exit || 1); }
 }

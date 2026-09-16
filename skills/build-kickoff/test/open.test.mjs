@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deepLink, kickoffPrompt, repoRoot, parseKey, branchName, fetchIssue } from "../scripts/open.mjs";
+import { linearStub } from "../../to-tickets-linear/test/stub.mjs";
 
 const script = join(dirname(fileURLToPath(import.meta.url)), "..", "scripts", "open.mjs");
 
@@ -51,23 +52,24 @@ test("kickoffPrompt: con título manda el nombre exacto de la rama; sin él, la 
   assert.match(nada, /`<slug-de-la-spec>\/jar-12-<título-del-issue-en-kebab-6-palabras>`/);
 });
 
-test("fetchIssue: sin clave devuelve {} sin llamar; con clave lee título y la línea Spec:; error o issue ausente devuelven {}", async () => {
-  let calls = 0;
+/* D12: sin GraphQL propio. Lo que sabe del issue lo lee por `issueInfo` de
+   linear.mjs, contra el mismo stub que prueba a linear.mjs. Mejor esfuerzo:
+   sin clave, sin red, o con el issue ausente devuelve {} y nunca lanza. */
+test("fetchIssue: sin clave devuelve {} sin tocar la red; con clave lee título y Spec: por linear.mjs; ausente o sin red devuelve {}", async () => {
   const noKey = { LINEAR_API_KEY: "", LINEAR_KEY_FILE: "/nonexistent", HOME: "/nonexistent" };
-  assert.deepEqual(await fetchIssue("JAR-12", { env: noKey, fetchFn: async () => { calls++; return {}; } }), {});
-  assert.equal(calls, 0, "sin clave no toca la red");
-  const env = { LINEAR_API_KEY: "lin_fake", JARVIIS_LINEAR_URL: "http://127.0.0.1:9/graphql" };
-  const ok = async (url, init) => {
-    calls++;
-    assert.equal(init.headers.Authorization, "lin_fake");
-    assert.match(init.body, /"id":"JAR-12"/);
-    return { json: async () => ({ data: { issue: { title: "Login mágico", description: "## Objetivo\n…\n\nSpec: `docs/specs/login-magico.md`" } } }) };
-  };
-  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: ok }), { title: "Login mágico", spec: "docs/specs/login-magico.md" });
-  const sinSpec = async () => ({ json: async () => ({ data: { issue: { title: "T", description: "sin línea de spec" } } }) });
-  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: sinSpec }), { title: "T", spec: null });
-  assert.deepEqual(await fetchIssue("JAR-99", { env, fetchFn: async () => ({ json: async () => ({ data: { issue: null } }) }) }), {});
-  assert.deepEqual(await fetchIssue("JAR-12", { env, fetchFn: async () => { throw new Error("red"); } }), {});
+  const stub = await linearStub({ issues: [
+    { identifier: "JAR-12", title: "Login mágico", description: "## Objetivo\n…\n\nSpec: `docs/specs/login-magico.md`", state: { name: "Todo", type: "unstarted" } },
+    { identifier: "JAR-13", title: "T", description: "sin línea de spec", state: { name: "Todo", type: "unstarted" } },
+  ] });
+  try {
+    const env = { LINEAR_API_KEY: "lin_fake", JARVIIS_LINEAR_URL: stub.url };
+    assert.deepEqual(await fetchIssue("JAR-12", { env: { ...noKey, JARVIIS_LINEAR_URL: stub.url } }), {});
+    assert.deepEqual(await fetchIssue("JAR-12", { env }), { title: "Login mágico", spec: "docs/specs/login-magico.md" });
+    assert.deepEqual(await fetchIssue("JAR-13", { env }), { title: "T", spec: null });
+    assert.deepEqual(await fetchIssue("JAR-99", { env }), {});
+    assert.deepEqual(stub.state.mutations, [], "leer no escribe");
+  } finally { await stub.close(); }
+  assert.deepEqual(await fetchIssue("JAR-12", { env: { LINEAR_API_KEY: "lin_fake", JARVIIS_LINEAR_URL: "http://127.0.0.1:1/" } }), {}, "sin red");
 });
 
 test("deepLink via linear: linear_id y prompt codificados", () => {
