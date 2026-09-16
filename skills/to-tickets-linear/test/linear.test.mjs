@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { order, resolveTeam, publish, apiKey, withKeys, issueState } from "../scripts/linear.mjs";
+import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
 
 const plan = (over = {}) => ({
@@ -233,5 +233,18 @@ test("issueState: JARVIIS_LINEAR_TIMEOUT_MS no alarga los 3 s de techo", async (
     const t0 = Date.now();
     await assert.rejects(issueState("JAR-8", { ...env, JARVIIS_LINEAR_TIMEOUT_MS: "60000" }), /sin red.*timeout/i);
     assert.ok(Date.now() - t0 < 3500, "cortó a los 3 s, no a los 60");
+  });
+});
+
+/* D12: build-kickoff importa `issue` de aquí en vez de hacer GraphQL propio;
+   necesita el título y la línea `Spec:` de la descripción. issueState (el
+   wayfinder) sigue devolviendo solo { type, name, pr }. */
+test("issueInfo: estado, PR, título y la spec de la línea `Spec:`; sin línea, spec null", async () => {
+  const conSpec = { identifier: "JAR-12", title: "Login mágico", description: "## Objetivo\n…\n\nSpec: `docs/specs/login-magico.md`",
+    state: { name: "Todo", type: "unstarted" }, attachments: [] };
+  const sinSpec = { identifier: "JAR-13", title: "T", description: "sin línea de spec", state: { name: "Todo", type: "unstarted" }, attachments: [] };
+  await withStub({ issues: [conSpec, sinSpec] }, async ({ env }) => {
+    assert.deepEqual(await issueInfo("JAR-12", env), { type: "unstarted", name: "Todo", pr: null, title: "Login mágico", spec: "docs/specs/login-magico.md" });
+    assert.deepEqual(await issueInfo("JAR-13", env), { type: "unstarted", name: "Todo", pr: null, title: "T", spec: null });
   });
 });

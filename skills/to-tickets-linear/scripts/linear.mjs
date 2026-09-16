@@ -268,18 +268,20 @@ function verify(report, payloads, relations) {
 /* ---------------------------------------------------------- issueState --- */
 
 const Q_STATE = `query IssueState($key: String!) { issue(id: $key) {
-  identifier
+  identifier title description
   state { name type }
   attachments { nodes { sourceType metadata } }
 } }`;
 
-/* Lo que el wayfinder necesita para enrutar un issue: { type, name, pr }.
+/* Un issue leído para enrutarlo o arrancarlo: { type, name, pr, title, spec }.
    `type` es la categoría del estado (backlog, unstarted, started, completed,
    canceled, duplicate), `name` el nombre tal cual, `pr` el `metadata.status`
-   del último attachment de GitHub ("open" | "merged") o null. Lanza sin
-   clave, sin red, o si el issue no existe; el timeout es corto (3 s) porque
-   corre en cada `/wayfinder JAR-n` y sin respuesta la ruta sigue sin él. */
-export async function issueState(key, env = process.env) {
+   del último attachment de GitHub ("open" | "merged") o null, `spec` la ruta
+   de la línea `Spec:` que publish deja al pie de la descripción (D12: la lee
+   build-kickoff, que ya no hace GraphQL propio). Lanza sin clave, sin red, o
+   si el issue no existe; el timeout es corto (3 s) porque corre en cada
+   `/wayfinder JAR-n` y sin respuesta la ruta sigue sin él. */
+export async function issueInfo(key, env = process.env) {
   let data;
   try { data = await gql(Q_STATE, { key }, env, { timeoutMs: 3000 }); }
   catch (e) {
@@ -292,7 +294,15 @@ export async function issueState(key, env = process.env) {
   if (!issue) throw new Error(`${key} no existe en Linear`);
   const github = (issue.attachments?.nodes || []).filter((a) => a.sourceType === "github");
   const pr = github.length ? (github.at(-1).metadata?.status || null) : null;
-  return { type: issue.state.type, name: issue.state.name, pr };
+  const m = /Spec:\s*`?([^`\n]+?)`?\s*$/m.exec(issue.description || "");
+  return { type: issue.state.type, name: issue.state.name, pr, title: issue.title || null, spec: m ? m[1].trim() : null };
+}
+
+/* Lo que el wayfinder necesita, y solo eso: hace spread del resultado en su
+   salida, así que aquí no entra nada más. */
+export async function issueState(key, env = process.env) {
+  const { type, name, pr } = await issueInfo(key, env);
+  return { type, name, pr };
 }
 
 /* ---------------------------------------------------------------- main --- */

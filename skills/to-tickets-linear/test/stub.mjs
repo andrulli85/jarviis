@@ -43,7 +43,7 @@ export async function linearStub(world = {}) {
       const i = state.existing.find((x) => x.identifier === v.key);
       /* Linear responde con un error, no con null, a un identificador que no existe. */
       if (!i) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "Entity not found: Issue - Could not find referenced Issue." }] })); }
-      return reply({ issue: { identifier: i.identifier, state: i.state, attachments: { nodes: i.attachments || [] } } });
+      return reply({ issue: { identifier: i.identifier, title: i.title || null, description: i.description || "", state: i.state, attachments: { nodes: i.attachments || [] } } });
     }
     if (state.failOn && q.includes(state.failOn)) { res.writeHead(200, { "content-type": "application/json" }); return res.end(JSON.stringify({ errors: [{ message: "boom on " + state.failOn }] })); }
     if (/query Viewer/.test(q)) return reply({ viewer: { id: "u-1", name: "Andres", email: "a@x" } });
