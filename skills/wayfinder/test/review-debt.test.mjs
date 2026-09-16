@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { reviewDebt } from "../scripts/stations.mjs";
@@ -72,10 +72,17 @@ test("un to que dejó de ser ancestro de HEAD (rebase) no cuenta; ok:false no cu
   evidence(evidenceDir, { at: "2026-09-12T11:00:00.000Z", to: c2, ok: false, verdict: null });
   evidence(evidenceDir, { at: "2026-09-12T12:00:00.000Z", to: "0123456789abcdef0123456789abcdef01234567" });
   const d = reviewDebt({ cwd: r.cwd, evidenceDir });
-  assert.deepEqual(d, { lastReviewed: [], pending: [], command: null, note: "/code-review no deja evidencia y no cuenta" });
+  assert.deepEqual(d.lastReviewed, []);
+  assert.deepEqual(d.pending, []);
+  assert.equal(d.command, null);
+  /* El commit de la rama borrada sigue en el repo: es un review de aquí que
+     dejó de contar, y eso se dice. El `to` inventado no lo conoce este repo
+     (será de otro) y no ensucia la nota. */
+  assert.deepEqual(d.orphans, [gone]);
+  assert.match(d.note, /1 review sobre commits que ya no están en HEAD/);
 
   const empty = reviewDebt({ cwd: r.cwd, evidenceDir: join(r.cwd, "no-such-dir") });
-  assert.deepEqual(empty, { lastReviewed: [], pending: [], command: null, note: "/code-review no deja evidencia y no cuenta" });
+  assert.deepEqual(empty, { lastReviewed: [], pending: [], command: null, orphans: [], note: "/code-review no deja evidencia y no cuenta" });
 });
 
 test("dos reviews en el mismo linaje: el to más nuevo manda el rango, sin nota de ya revisados; al día cuando el to es HEAD", () => {
@@ -102,5 +109,112 @@ test("fuera de un repo git no hay deuda: como sin evidencia", () => {
   const evidenceDir = join(cwd, "reviews");
   evidence(evidenceDir, { at: "2026-09-12T10:00:00.000Z", to: "0123456789abcdef0123456789abcdef01234567" });
   const d = reviewDebt({ cwd, evidenceDir, git: () => null });
-  assert.deepEqual(d, { lastReviewed: [], pending: [], command: null, note: "/code-review no deja evidencia y no cuenta" });
+  assert.deepEqual(d, { lastReviewed: [], pending: [], command: null, orphans: [], note: "/code-review no deja evidencia y no cuenta" });
+});
+
+/* ------------------------------------------------- squash y el mapa --- */
+
+/* Lo que hace GitHub al mergear con squash: el commit revisado de la rama
+   deja de existir en main, y con él la evidencia deja de contar aunque el
+   contenido sí entró. El mapa rama→main lo devuelve `gh`, no una promesa
+   nuestra: quien afirma que ese commit entró es el servidor. */
+test("squash: sin mapa, el review de la rama deja de contar; con mapa, cuenta el commit de main", () => {
+  const r = repo();
+  const base = r.commit("base");
+  r.git("checkout", "-q", "-b", "rama");
+  const enRama = r.commit("trabajo de la rama");
+  r.git("checkout", "-q", "main");
+  const squash = r.commit("lo mismo, aplastado (#42)");
+  const despues = r.commit("posterior");
+  const evidenceDir = join(r.cwd, "reviews");
+  evidence(evidenceDir, { at: "2026-09-15T10:00:00.000Z", to: enRama });
+
+  const sinMapa = reviewDebt({ cwd: r.cwd, evidenceDir });
+  assert.deepEqual(sinMapa.lastReviewed, []);
+  assert.deepEqual(sinMapa.orphans, [enRama]);
+  assert.match(sinMapa.note, /--sync-merges/);
+
+  const conMapa = reviewDebt({ cwd: r.cwd, evidenceDir, merges: { [enRama]: { mergedAs: squash, pr: 42 } } });
+  assert.equal(conMapa.lastReviewed.length, 1);
+  assert.equal(conMapa.lastReviewed[0].sha, squash);
+  assert.equal(conMapa.lastReviewed[0].via, enRama);
+  assert.deepEqual(conMapa.pending, [despues]);
+  assert.deepEqual(conMapa.orphans, []);
+  assert.equal(conMapa.command, `/adversarial-review ${squash.slice(0, 7)}..HEAD`);
+  assert.equal(conMapa.note, "/code-review no deja evidencia y no cuenta");
+  assert.ok(base);
+});
+
+/* Un mapa es una afirmación sobre este repo, y puede no serlo: una entrada
+   cuyo `mergedAs` no está en HEAD no puede saldar nada. */
+test("squash: una entrada del mapa que no aterrizó en este HEAD no cuenta y el review sigue huérfano", () => {
+  const r = repo();
+  r.commit("base");
+  r.git("checkout", "-q", "-b", "rama");
+  const enRama = r.commit("trabajo");
+  r.git("checkout", "-q", "main");
+  r.commit("otra cosa");
+  const evidenceDir = join(r.cwd, "reviews");
+  evidence(evidenceDir, { at: "2026-09-15T10:00:00.000Z", to: enRama });
+  const d = reviewDebt({ cwd: r.cwd, evidenceDir, merges: { [enRama]: { mergedAs: "0".repeat(40), pr: 7 } } });
+  assert.deepEqual(d.lastReviewed, []);
+  assert.deepEqual(d.orphans, [enRama]);
+});
+
+test("syncMerges: pregunta a gh por las PRs mergeadas y escribe commit de rama → commit de merge", async () => {
+  const { syncMerges } = await import("../scripts/stations.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "merges-"));
+  const file = join(dir, "merged-commits.json");
+  const llamadas = [];
+  const gh = (args) => {
+    llamadas.push(args);
+    return JSON.stringify([
+      { number: 26, mergedAt: "2026-09-15T23:50:00Z", mergeCommit: { oid: "m".repeat(40) }, commits: [{ oid: "a".repeat(40) }, { oid: "b".repeat(40) }] },
+      { number: 25, mergedAt: "2026-09-15T22:10:00Z", mergeCommit: { oid: "n".repeat(40) }, commits: [{ oid: "c".repeat(40) }] },
+      /* Una PR cerrada sin merge commit no aporta nada y no rompe. */
+      { number: 24, mergedAt: null, mergeCommit: null, commits: [{ oid: "d".repeat(40) }] },
+    ]);
+  };
+  const r = syncMerges({ cwd: dir, file, gh });
+  assert.equal(r.prs, 2);
+  assert.equal(r.pairs, 3);
+  assert.ok(llamadas[0].includes("--json"));
+  const escrito = JSON.parse(readFileSync(file, "utf8"));
+  assert.deepEqual(escrito["a".repeat(40)], { mergedAs: "m".repeat(40), pr: 26, at: "2026-09-15T23:50:00Z" });
+  assert.equal(escrito["c".repeat(40)].pr, 25);
+  assert.equal(escrito["d".repeat(40)], undefined);
+
+  /* Segunda corrida: lo que ya había se conserva, lo nuevo se suma. */
+  const r2 = syncMerges({ cwd: dir, file, gh: () => JSON.stringify([{ number: 30, mergedAt: "2026-09-16T00:00:00Z", mergeCommit: { oid: "z".repeat(40) }, commits: [{ oid: "e".repeat(40) }] }]) });
+  assert.equal(r2.pairs, 1);
+  const tras = JSON.parse(readFileSync(file, "utf8"));
+  assert.equal(tras["a".repeat(40)].pr, 26);
+  assert.equal(tras["e".repeat(40)].pr, 30);
+});
+
+test("syncMerges: sin gh o con gh que falla, lo dice y no escribe el archivo", async () => {
+  const { syncMerges } = await import("../scripts/stations.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "merges-"));
+  const file = join(dir, "merged-commits.json");
+  const r = syncMerges({ cwd: dir, file, gh: () => { throw new Error("gh: command not found"); } });
+  assert.equal(r.ok, false);
+  assert.match(r.why, /gh/);
+  assert.equal(existsSync(file), false);
+});
+
+test("syncMerges: si GitHub se queja del techo de nodos, reintenta con la mitad de ventana", async () => {
+  const { syncMerges } = await import("../scripts/stations.mjs");
+  const dir = mkdtempSync(join(tmpdir(), "merges-"));
+  const file = join(dir, "merged-commits.json");
+  const ventanas = [];
+  const gh = (args) => {
+    const limit = Number(args[args.indexOf("--limit") + 1]);
+    ventanas.push(limit);
+    if (limit > 12) throw new Error("GraphQL: This query requests up to 505,050 possible nodes which exceeds the maximum limit of 500,000.");
+    return JSON.stringify([{ number: 9, mergedAt: "2026-09-16T00:00:00Z", mergeCommit: { oid: "m".repeat(40) }, commits: [{ oid: "a".repeat(40) }] }]);
+  };
+  const r = syncMerges({ cwd: dir, file, gh, limit: 50 });
+  assert.equal(r.ok, true);
+  assert.deepEqual(ventanas, [50, 25, 12]);
+  assert.equal(JSON.parse(readFileSync(file, "utf8"))["a".repeat(40)].pr, 9);
 });

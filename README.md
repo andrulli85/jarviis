@@ -79,13 +79,22 @@ pasado por `adversarial-review` y el comando que los salda
 (`N commits sin review adversarial desde <sha7> (<fecha>): /adversarial-review
 <sha7>..HEAD`, `al día (último review …)` o `sin evidencia de review en este
 repo`). Cuenta como revisado cada `to` de una evidencia `ok:true` con
-veredicto que siga siendo ancestro de `HEAD` (un `to` que dejó de serlo por
-rebase o squash no cuenta); la deuda es el conjunto de commits que ningún
-`to` revisado alcanza, así que dos ramas revisadas por separado y fusionadas
-deben solo el merge y lo posterior, y el comando parte del merge-base (nunca
-deja fuera un pendiente; la nota dice cuántos ya revisados arrastra). Es
-**informativa**: no cambia el exit de `--check`. `/code-review` no deja
-evidencia y no cuenta; `--json` lo trae como `review`.
+veredicto que siga siendo ancestro de `HEAD`; la deuda es el conjunto de
+commits que ningún `to` revisado alcanza, así que dos ramas revisadas por
+separado y fusionadas deben solo el merge y lo posterior, y el comando parte
+del merge-base (nunca deja fuera un pendiente; la nota dice cuántos ya
+revisados arrastra). Es **informativa**: no cambia el exit de `--check`.
+`/code-review` no deja evidencia y no cuenta; `--json` lo trae como `review`.
+
+**El merge por squash borra el commit revisado**, así que el review de una
+rama dejaría de contar justo al mergearla y la deuda solo podría subir.
+`npm run stations -- --sync-merges` le pregunta a `gh` qué commits de rama
+entraron con qué commit de main en cada PR mergeada y guarda el mapa en
+`~/.local/state/jarviis/merged-commits.json`; con él, un `to` que ya no está
+en `HEAD` cuenta por el commit aplastado que sí está (`lastReviewed` lo dice
+con `via` y el número de PR). Quien afirma que ese commit entró es GitHub, no
+el script. Un `to` que este repo conoce y no se puede traducir queda como
+huérfano y el pie lo nombra; el `to` de un review de otro repo se ignora.
 
 ## Proveedores
 
