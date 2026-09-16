@@ -101,6 +101,17 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    en ese turno, el mensaje describe un estado, no una intención.
    Pedido por Andy el 2026-09-16, tras once minutos de silencio después de un mensaje
    que terminaba en "sigo con los arreglos".
+11. **AFK no baja el ritmo de los avances, lo sube.** Que el humano diga que se va no es
+   permiso para trabajar en silencio hasta traer el resultado: es cuando más falta hace
+   saber el estado, porque vuelve sin contexto y tiene que poder reconstruirlo leyendo.
+   La prueba, una línea: *si volviera ahora mismo y leyera solo el canal, ¿sabría qué
+   está hecho, qué está a medias y qué le espera a él?* Si no, publica.
+   En un turno AFK, además del ritmo de la regla 8, cada mensaje dice **tres cosas**:
+   qué quedó cerrado y verificado, qué está a medias y en qué estado queda si paras
+   ahora, y qué decisiones siguen esperándole. Nunca sólo lo que hiciste.
+   Y el contrato se fija **al empezar**, no al final: qué haces sin él, qué no harás bajo
+   ningún concepto, y cuándo paras. Así no tiene que vigilar.
+   Pedido por Andy el 2026-09-16.
 
 ## Lo que ya está decidido y no se rediscute
 
