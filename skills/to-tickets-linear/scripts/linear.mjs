@@ -138,6 +138,8 @@ const M_CREATE = `mutation IssueCreate($input: IssueCreateInput!) {
 const Q_ISSUE = `query IssueRead($id: String!) { issue(id: $id) {
   id identifier title url description
   state { id name type }
+  team { id key }
+  assignee { id name }
   parent { id }
   labels { nodes { id name } }
   relations { nodes { type relatedIssue { id identifier } } }
@@ -263,6 +265,100 @@ function verify(report, payloads, relations) {
   const done = new Set(report.relationsCreated.map((r) => r.blocker + "→" + r.blocked));
   const relationsMissing = relations.filter((r) => !done.has(r.blocker + "→" + r.blocked));
   return { count: report.created.length, expected: payloads.length, doneCategory, relationsMissing };
+}
+
+/* ------------------------------------------------ comandos del tablero --- */
+
+/* Un issue por clave, con lo que los comandos necesitan (id, equipo,
+   estado, asignado, relaciones). Lanza con la clave si no existe: Linear
+   responde con error a un identificador desconocido, y algún stub con null. */
+async function readIssue(key, env) {
+  let data;
+  try { data = await gql(Q_ISSUE, { id: key }, env); }
+  catch (e) { if (/not found/i.test(e.message)) throw new Error(`${key} no existe en Linear`); throw e; }
+  if (!data?.issue) throw new Error(`${key} no existe en Linear`);
+  return data.issue;
+}
+
+const M_COMMENT = `mutation CommentCreate($input: CommentCreateInput!) {
+  commentCreate(input: $input) { success comment { id url } } }`;
+
+/* comment <clave> <texto>: el comentario que lee Andy en la card (D1-D6 lo
+   redactan; aquí solo se publica). Devuelve { key, commentId, url }. */
+export async function comment(key, body, { env = process.env, dryRun = false } = {}) {
+  const text = String(body || "").trim();
+  if (!text) throw new Error("el comentario necesita texto (argumento o stdin)");
+  const issue = await readIssue(key, env);
+  const payload = { issueId: issue.id, body: text };
+  if (dryRun) return { dryRun: true, key: issue.identifier, payload };
+  const c = (await gql(M_COMMENT, { input: payload }, env)).commentCreate;
+  if (!c?.success || !c.comment?.id) throw new Error(`commentCreate en ${key} no devolvió un comentario`);
+  return { key: issue.identifier, commentId: c.comment.id, url: c.comment.url };
+}
+
+const M_UPDATE = `mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) {
+  issueUpdate(id: $id, input: $input) { success issue { id identifier state { id name type } assignee { id name } } } }`;
+
+async function update(issue, input, env) {
+  const u = (await gql(M_UPDATE, { id: issue.id, input }, env)).issueUpdate;
+  if (!u?.success || !u.issue) throw new Error(`issueUpdate en ${issue.identifier} no devolvió el issue`);
+  return u.issue;
+}
+
+/* assign <clave> [me]: el asignado pasa a ser el dueño de la clave de API.
+   Solo `me`: asignar a otro es una decisión de Andy en el tablero, no de un
+   agente. Devuelve { key, assignee }. */
+export async function assign(key, who = "me", { env = process.env, dryRun = false } = {}) {
+  if (who !== "me") throw new Error(`assign solo admite "me" (el viewer de la clave); llegó "${who}"`);
+  const issue = await readIssue(key, env);
+  const viewer = (await gql(Q_VIEWER, {}, env)).viewer;
+  const input = { assigneeId: viewer.id };
+  if (dryRun) return { dryRun: true, key: issue.identifier, payload: { id: issue.id, input } };
+  const u = await update(issue, input, env);
+  return { key: u.identifier, assignee: u.assignee ? { id: u.assignee.id, name: u.assignee.name } : null };
+}
+
+/* move <clave> <nombre de estado>: el estado se resuelve por nombre entre
+   los del equipo del issue (la misma query que resolve; los estados son del
+   equipo, no del workspace). D8: ninguna categoría de cierre, ni en dry-run:
+   el cierre lo hace la PR de Build. Ese rechazo sale con DONE_GATE_EXIT para
+   que un prompt lo distinga de un nombre mal escrito. */
+export const DONE_GATE_EXIT = 3;
+export async function move(key, stateName, { env = process.env, dryRun = false } = {}) {
+  const wanted = String(stateName || "").trim().toLowerCase();
+  if (!wanted) throw new Error("dime el estado de destino (por nombre)");
+  const issue = await readIssue(key, env);
+  const states = [...(await gql(Q_TEAM, { id: issue.team.id }, env)).team.states.nodes].sort((a, b) => a.position - b.position);
+  const target = states.find((s) => s.name.toLowerCase() === wanted);
+  if (!target) throw new Error(`el equipo ${issue.team.key} no tiene un estado "${stateName}"; hay: ${states.map((s) => s.name).join(", ")}`);
+  if (DONE_TYPES.has(target.type)) {
+    const e = new Error(`"${target.name}" es de categoría ${target.type}: el cierre de ${issue.identifier} lo hace la PR de Build al mergear, no un move`);
+    e.exit = DONE_GATE_EXIT;
+    throw e;
+  }
+  const from = { id: issue.state.id, name: issue.state.name, type: issue.state.type };
+  const input = { stateId: target.id };
+  if (dryRun) return { dryRun: true, key: issue.identifier, from, payload: { id: issue.id, input } };
+  const u = await update(issue, input, env);
+  return { key: u.identifier, from, state: { id: u.state.id, name: u.state.name, type: u.state.type } };
+}
+
+/* link <A> blocks <B>: la relación nativa que Linear pinta en la card. Solo
+   `blocks` (es la única que la fábrica usa); idempotente: si A ya bloquea a
+   B no se crea otra. Devuelve { blocker, blocked, created }. */
+export async function link(blockerKey, type, blockedKey, { env = process.env, dryRun = false } = {}) {
+  if (type !== "blocks") throw new Error(`link solo admite "blocks" (link <A> blocks <B>); llegó "${type}"`);
+  if (!blockedKey) throw new Error("link necesita los dos extremos: link <A> blocks <B>");
+  const a = await readIssue(blockerKey, env);
+  const b = await readIssue(blockedKey, env);
+  if (a.id === b.id) throw new Error(`${a.identifier} no puede bloquearse a sí mismo`);
+  const existed = (a.relations?.nodes || []).some((r) => r.type === "blocks" && r.relatedIssue?.id === b.id);
+  const payload = { issueId: a.id, relatedIssueId: b.id, type: "blocks" };
+  if (dryRun) return { dryRun: true, blocker: a.identifier, blocked: b.identifier, existed, payload };
+  if (existed) return { blocker: a.identifier, blocked: b.identifier, created: false };
+  const rc = (await gql(M_RELATION, { input: payload }, env)).issueRelationCreate;
+  if (!rc?.success) throw new Error(`no se pudo crear ${a.identifier} blocks ${b.identifier}`);
+  return { blocker: a.identifier, blocked: b.identifier, created: true };
 }
 
 /* ---------------------------------------------------------- issueState --- */

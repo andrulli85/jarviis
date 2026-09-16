@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo } from "../scripts/linear.mjs";
+import { order, resolveTeam, publish, apiKey, withKeys, issueState, issueInfo, comment, assign, move, link, DONE_GATE_EXIT } from "../scripts/linear.mjs";
 import { linearStub } from "./stub.mjs";
 
 const plan = (over = {}) => ({
@@ -246,5 +246,97 @@ test("issueInfo: estado, PR, título y la spec de la línea `Spec:`; sin línea,
   await withStub({ issues: [conSpec, sinSpec] }, async ({ env }) => {
     assert.deepEqual(await issueInfo("JAR-12", env), { type: "unstarted", name: "Todo", pr: null, title: "Login mágico", spec: "docs/specs/login-magico.md" });
     assert.deepEqual(await issueInfo("JAR-13", env), { type: "unstarted", name: "Todo", pr: null, title: "T", spec: null });
+  });
+});
+
+/* ------------------------------------------------- comandos del tablero --- */
+
+/* D7: todo lo que un skill hace en Linear pasa por aquí. Cada comando
+   resuelve ids en la corrida, y con dryRun renderiza el payload sin escribir. */
+const TODO = (identifier, extra = {}) => ({ identifier, title: "T " + identifier, state: { name: "Todo", type: "unstarted" }, ...extra });
+
+test("comment: crea el comentario en el issue resuelto por clave y devuelve { key, commentId, url }", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const r = await comment("JAR-15", "Arranco: alcance A, plan B.", { env });
+    assert.equal(r.key, "JAR-15");
+    assert.ok(r.commentId, "id del comentario");
+    assert.match(r.url, /^https:/);
+    const writes = stub.state.mutations.filter((m) => m.op === "commentCreate");
+    assert.equal(writes.length, 1);
+    assert.equal(writes[0].input.issueId, stub.state.existing[0].id, "va por id, no por clave");
+    assert.equal(writes[0].input.body, "Arranco: alcance A, plan B.");
+  });
+});
+
+test("comment --dry-run: resuelve el issue, renderiza el payload y no escribe; issue ausente o texto vacío lanzan", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const r = await comment("JAR-15", "prueba", { env, dryRun: true });
+    assert.equal(r.dryRun, true);
+    assert.equal(r.key, "JAR-15");
+    assert.deepEqual(r.payload, { issueId: stub.state.existing[0].id, body: "prueba" });
+    assert.deepEqual(stub.state.mutations, []);
+    await assert.rejects(comment("JAR-999", "x", { env }), /JAR-999.*no existe/);
+    await assert.rejects(comment("JAR-15", "   ", { env }), /texto/);
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
+test("assign <clave> me: assigneeId = viewer por issueUpdate; --dry-run lo renderiza sin escribir", async () => {
+  await withStub({ issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const dry = await assign("JAR-15", "me", { env, dryRun: true });
+    assert.deepEqual(dry, { dryRun: true, key: "JAR-15", payload: { id: "iss-JAR-15", input: { assigneeId: "u-1" } } });
+    assert.deepEqual(stub.state.mutations, []);
+    const r = await assign("JAR-15", "me", { env });
+    assert.deepEqual(r, { key: "JAR-15", assignee: { id: "u-1", name: "Andres" } });
+    assert.deepEqual(stub.state.mutations, [{ op: "issueUpdate", id: "iss-JAR-15", input: { assigneeId: "u-1" } }]);
+    await assert.rejects(assign("JAR-15", "otro", { env }), /solo.*me/);
+  });
+});
+
+const STATES = [
+  { id: "st-backlog", name: "Backlog", type: "backlog", position: 0 },
+  { id: "st-todo", name: "Todo", type: "unstarted", position: 1 },
+  { id: "st-progress", name: "In Progress", type: "started", position: 2 },
+  { id: "st-review", name: "In Review", type: "started", position: 3 },
+  { id: "st-done", name: "Done", type: "completed", position: 5 },
+  { id: "st-canceled", name: "Canceled", type: "canceled", position: 6 },
+];
+
+test("move <clave> <estado>: resuelve el estado por nombre en el equipo del issue, sin distinguir mayúsculas; --dry-run sin escribir", async () => {
+  await withStub({ states: STATES, issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    const dry = await move("JAR-15", "in progress", { env, dryRun: true });
+    assert.deepEqual(dry, { dryRun: true, key: "JAR-15", from: { id: "st-todo", name: "Todo", type: "unstarted" }, payload: { id: "iss-JAR-15", input: { stateId: "st-progress" } } });
+    assert.deepEqual(stub.state.mutations, []);
+    const r = await move("JAR-15", "In Review", { env });
+    assert.deepEqual(r, { key: "JAR-15", from: { id: "st-todo", name: "Todo", type: "unstarted" }, state: { id: "st-review", name: "In Review", type: "started" } });
+    assert.deepEqual(stub.state.mutations, [{ op: "issueUpdate", id: "iss-JAR-15", input: { stateId: "st-review" } }]);
+    await assert.rejects(move("JAR-15", "Nirvana", { env }), /Nirvana.*Backlog.*In Progress/s);
+  });
+});
+
+/* D8: el cierre lo hace la PR de Build. Un move a una categoría de cierre
+   no es un error de datos sino del gate: sale con su propio código. */
+test("move a Done o Canceled se rechaza con exit 3 antes de escribir, aunque --dry-run", async () => {
+  await withStub({ states: STATES, issues: [TODO("JAR-15")] }, async ({ env, stub }) => {
+    for (const name of ["Done", "Canceled"]) {
+      await assert.rejects(move("JAR-15", name, { env }), (e) => e.exit === DONE_GATE_EXIT && /categoría (completed|canceled).*PR/.test(e.message));
+      await assert.rejects(move("JAR-15", name, { env, dryRun: true }), (e) => e.exit === DONE_GATE_EXIT);
+    }
+    assert.deepEqual(stub.state.mutations, []);
+  });
+});
+
+test("link <A> blocks <B>: issueRelationCreate por ids; repetido no vuelve a crear; --dry-run sin escribir", async () => {
+  await withStub({ issues: [TODO("JAR-14"), TODO("JAR-16")] }, async ({ env, stub }) => {
+    const dry = await link("JAR-14", "blocks", "JAR-16", { env, dryRun: true });
+    assert.deepEqual(dry, { dryRun: true, blocker: "JAR-14", blocked: "JAR-16", existed: false, payload: { issueId: "iss-JAR-14", relatedIssueId: "iss-JAR-16", type: "blocks" } });
+    assert.deepEqual(stub.state.mutations, []);
+    const first = await link("JAR-14", "blocks", "JAR-16", { env });
+    assert.deepEqual(first, { blocker: "JAR-14", blocked: "JAR-16", created: true });
+    const again = await link("JAR-14", "blocks", "JAR-16", { env });
+    assert.deepEqual(again, { blocker: "JAR-14", blocked: "JAR-16", created: false });
+    assert.equal(stub.state.mutations.filter((m) => m.op === "issueRelationCreate").length, 1, "idempotente");
+    await assert.rejects(link("JAR-14", "relates", "JAR-16", { env }), /blocks/);
+    await assert.rejects(link("JAR-14", "blocks", "JAR-14", { env }), /a sí mismo/);
   });
 });
