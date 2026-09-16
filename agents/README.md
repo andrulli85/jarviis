@@ -123,6 +123,13 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    Lo que **nunca** entra en "hacerse cargo", aunque parezca mecánico: publicar con
    bloqueantes conocidos, saltarse un gate, cualquier cosa irreversible, y cualquier cosa
    que cambie el alcance de lo acordado.
+   **De quién sea el repositorio no decide quién mergea.** En estos repos Andy es el
+   único colaborador y abre y mergea él mismo todos los PRs, así que un PR no es una
+   puerta de aprobación de otra persona: es el registro escrito de lo que entra. Lo que
+   decide es el contenido, con la misma prueba de siempre: documentación que él pidió y
+   que dice lo que pidió se mergea sola; código que mete en `main` un agujero conocido,
+   o que se publicó saltándose un gate, tiene dos respuestas razonables y es suya.
+   Preguntarle por un merge de documentación que encargó él es devolverle trabajo.
    El error que la motiva: el 2026-09-16 cerré una sesión dejándole "abrir el PR" y
    "mergear las reglas" como pendientes suyos. Ninguna de las dos tenía más de una
    respuesta razonable — las dos eran trabajo mío disfrazado de decisión suya.
