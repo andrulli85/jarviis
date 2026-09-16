@@ -252,7 +252,12 @@ export function entryForState(state) {
    recortado, o una salida que no es el JSON pedido. `execFn` inyectable para
    el test del doble. */
 const NO_REPO = /not a git repository|no git remotes|none of the git remotes|could not determine|unable to determine base repository/i;
-export async function ghPrState(ref, { cwd = process.cwd(), env = process.env, execFn = promisify(execFile), timeoutMs = 3000 } = {}) {
+/* El techo de espera es de 3 s: /wayfinder corre en una conversación y sin
+   respuesta la ruta sigue sin GitHub. JARVIIS_GH_TIMEOUT_MS lo sustituye, y
+   existe para los tests: su doble de gh es un proceso más, y con la máquina
+   saturada arrancarlo pasa de 3 s y tiñe de rojo un test que no mide eso
+   (JAR-18). En uso real nadie la pone y el techo sigue siendo 3 s. */
+export async function ghPrState(ref, { cwd = process.cwd(), env = process.env, execFn = promisify(execFile), timeoutMs = Number(env.JARVIIS_GH_TIMEOUT_MS) || 3000 } = {}) {
   let out;
   try {
     out = await execFn("gh", ["pr", "view", String(ref), "--json", "state,isDraft,url,headRefName"], { cwd, env, timeout: timeoutMs, encoding: "utf8" });

@@ -691,16 +691,42 @@ test("idea, spec e issue nunca invocan el lector de GitHub; solo pr y merged, y 
 
 /* ------------------------------------------------------------ ghPrState --- */
 
-/* Un doble de gh: un script en un directorio temporal, al frente del PATH,
-   que anota los argumentos con que lo llamaron y responde lo que se le deja
-   en un archivo. Nada toca la red ni el gh real. */
+/* Un doble de gh: un ejecutable al frente del PATH que anota los argumentos
+   con que lo llamaron y responde lo que se le deja en un archivo. Nada toca la
+   red ni el gh real.
+
+   El ejecutable es UNO para toda la corrida, y lo que cambia por caso viaja en
+   un directorio de datos que el script lee de GH_DOUBLE_DIR. Estrenar un
+   ejecutable nuevo cuesta ~482 ms en macOS (la validación de la primera
+   ejecución) frente a ~17 ms reutilizarlo, medido el 2026-09-15; con la
+   concurrencia del runner ese pico cruzaba el timeout de 3 s de ghPrState y
+   ponía rojos, 4 corridas de 4 bajo carga, tests que no prueban el timeout
+   (JAR-18). */
+const ghBin = (() => {
+  const dir = mkdtempSync(join(tmpdir(), "gh-bin-"));
+  const bin = join(dir, "gh");
+  writeFileSync(bin, [
+    "#!/bin/sh",
+    'printf \'%s\\n\' "$*" >> "$GH_DOUBLE_DIR/calls.log"',
+    'cat "$GH_DOUBLE_DIR/reply"',
+    '[ -s "$GH_DOUBLE_DIR/stderr" ] && cat "$GH_DOUBLE_DIR/stderr" >&2',
+    'exit "$(cat "$GH_DOUBLE_DIR/exit")"',
+    "",
+  ].join("\n"));
+  chmodSync(bin, 0o755);
+  return dir;
+})();
+
 function ghDouble({ reply, exit = 0, stderr = "" }) {
   const dir = mkdtempSync(join(tmpdir(), "gh-double-"));
   const log = join(dir, "calls.log");
   writeFileSync(join(dir, "reply"), reply);
-  writeFileSync(join(dir, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> "${log}"\ncat "${join(dir, "reply")}"\n${stderr ? `echo "${stderr}" >&2\n` : ""}exit ${exit}\n`);
-  chmodSync(join(dir, "gh"), 0o755);
-  const env = { ...process.env, PATH: `${dir}:/usr/bin:/bin` };
+  writeFileSync(join(dir, "stderr"), stderr);
+  writeFileSync(join(dir, "exit"), String(exit));
+  /* El tiempo de espera solo se alarga para los tests: lo que aquí se mide es
+     el contrato con gh, nunca el reloj, y arrancar un proceso en una máquina
+     ocupada no es una respuesta lenta de GitHub. */
+  const env = { ...process.env, PATH: `${ghBin}:/usr/bin:/bin`, GH_DOUBLE_DIR: dir, JARVIIS_GH_TIMEOUT_MS: "30000" };
   return { env, calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n") : []) };
 }
 
