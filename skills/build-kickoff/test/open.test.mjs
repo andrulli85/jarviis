@@ -178,3 +178,16 @@ test("CLI: el prompt decodificado de la URL lleva la regla única y los dos coma
   assert.match(prompt, /linear\.mjs move JAR-15 "In Review"/);
   assert.doesNotMatch(prompt, /curl|graphql/i);
 });
+
+/* Hallazgo del review adversarial de Codex (2026-09-16, pasada 2): el prompt
+   pedía el comentario AL bloquearse y ninguno al salir del bloqueo, así que la
+   card se quedaba diciendo "esperando X" con el trabajo ya reanudado — y Andy
+   iría a desbloquear algo que ya está suelto, que es exactamente la decisión
+   distinta que D1 usa como test. No es el temporizador que la spec deja fuera:
+   ocurre dentro de la sesión que reanuda el trabajo, no en un reloj. */
+test("kickoffPrompt: salir del bloqueo también se cuenta", () => {
+  const p = kickoffPrompt({ key: "JAR-17", spec: "docs/specs/x.md" });
+  assert.match(p, /qué esperas y qué lo desbloquea/, "el bloqueo, como antes");
+  assert.match(p, /cuando vuelvas a moverte, dilo/i, "y la salida del bloqueo, antes de seguir");
+  assert.doesNotMatch(p, /cada \d+ ?(h|hora|min)/i, "sin promesa de reloj");
+});

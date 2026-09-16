@@ -87,7 +87,7 @@ español y sin tecnicismos.
 | Momento | Cuándo | Qué dice | Comando |
 |---|---|---|---|
 | Arranque | al abrir el workspace | una línea con alcance y plan; ni rama ni workspace, que eso ya lo muestra Conductor | `move <clave> "In Progress"` + `comment <clave> -` |
-| Cambio de plan | cuando ocurre | decisión que altera el alcance, sorpresa o bloqueo: qué, por qué y qué espera, sin prometer plazos; enlace a spec o veredicto si hay detalle | `comment <clave> -` |
+| Cambio de plan | cuando ocurre | decisión que altera el alcance, sorpresa o bloqueo: qué, por qué y qué espera, sin prometer plazos; enlace a spec o veredicto si hay detalle. **Salir del bloqueo también se cuenta**: una card parada en "esperando X" con el trabajo ya reanudado manda a Andres a desbloquear lo que ya está suelto | `comment <clave> -` |
 | Cierre | al abrir la PR | resultado en lenguaje de usuario, número de PR y "se cierra con esta PR" | `move <clave> "In Review"` + `comment <clave> -` |
 
 Un **issue derivado** es obligatoriamente un cambio de plan: se crea con
