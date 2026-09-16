@@ -88,6 +88,19 @@ rutinarias, sí para lo irreversible o lo que cambia el alcance.
    configuración cuesta más que los diez minutos que ahorra.
    Pedido por Andy el 2026-09-16, después de que le pidiera editar a mano un
    `settings.json`.
+10. **Un turno no termina con una promesa.** Publicar un mensaje es lo último que ocurre
+   en un turno: cuando el mensaje sale, el turno se cierra y nadie sigue trabajando. Así
+   que "sigo con esto" como última línea es una promesa que nadie va a cumplir, y el
+   humano se queda esperando un trabajo que no está ocurriendo.
+   La prueba, una línea: *¿mi último mensaje promete una acción que no he ejecutado ya
+   en este turno?* Si la respuesta es sí, o la ejecutas antes de cerrar, o reescribes el
+   mensaje para que diga la verdad: qué necesitas para continuar, o que quedas a la
+   espera.
+   En la práctica: los avances a mitad (regla 8) se publican **entre** dos tramos de
+   trabajo del mismo turno, nunca como cierre. Si publicas y no queda trabajo por hacer
+   en ese turno, el mensaje describe un estado, no una intención.
+   Pedido por Andy el 2026-09-16, tras once minutos de silencio después de un mensaje
+   que terminaba en "sigo con los arreglos".
 
 ## Lo que ya está decidido y no se rediscute
 
