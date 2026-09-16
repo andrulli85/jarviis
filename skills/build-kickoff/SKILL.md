@@ -65,6 +65,12 @@ desde aquí.
 `JARVIIS_NO_OPEN=1` imprimen la URL y salen. Un workspace abierto por un
 test es un workspace real en el Conductor de Andres.
 
+Con cualquiera de los dos, **corre el script igual y reporta la URL**: eso es
+la corrida completa y con éxito, no una corrida bloqueada. No es un motivo
+para no ejecutar nada, ni para mandar al usuario a otra sesión. Medido el
+2026-09-15: un eval leyó `JARVIIS_NO_OPEN=1` como "build-kickoff no puede
+funcionar aquí" y no llegó a ejecutar `open.mjs`.
+
 ## Los tres momentos de comentario en la card
 
 El prompt que este skill entrega lleva escrito, con su comando exacto, lo que
@@ -97,6 +103,20 @@ cierre — a Done lo lleva el merge de la PR, nunca un comando.
 Los comentarios y los dos `move` los ordena el prompt, así que el agente no
 tiene que pedir permiso para ellos; lo que sigue esperando el visto bueno de
 Andres es git (push y PR).
+
+**Tres momentos, y el prompt no promete nada más.** La propiedad que decide si
+algo puede entrar en el prompt: se cumple con lo que el agente hace mientras
+trabaja, sin depender de un reloj ni de una sesión viva. Un aviso cada tanto,
+un resumen periódico, un recordatorio "mientras avanzas" o un "te voy
+contando" no la cumplen — nadie queda ejecutándolos cuando la sesión acaba, y
+el prompt sería una promesa que la card no puede sostener (por eso la spec
+también deja fuera el temporizador de issues bloqueados).
+
+Si Andres pide seguir el avance desde el móvil, la respuesta son los tres
+momentos: eso es lo que la card va a contar, y el cambio de plan cubre lo que
+de verdad le haría decidir distinto. No se añade la cadencia al prompt ni se
+ofrece montarla por otra vía; si insiste después de oír el porqué, es su
+decisión y se le dice qué estación lo haría, pero no sale de aquí.
 
 ## Paso 3: parar
 
