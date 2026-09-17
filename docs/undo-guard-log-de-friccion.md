@@ -42,22 +42,34 @@ las diez lecturas adversariales.
 | 09-16 23:4x | commit con texto en español | `git commit -F - <<EOF … su contrato … EOF` | **no** | escribir el mensaje a un archivo | JAR-36 |
 | 09-16 23:4x | ídem, dos veces más | — | **no** | ídem | JAR-36 |
 | 09-16 23:2x | leer el settings de otro agente para copiarlo | `cp ~/.buzz/.claude/settings.json /tmp/…` | **sí** | fabricar un settings de prueba sintético | — |
+| 09-17 00:10 | limpiar un temporal en un script de prueba | `python3 -c "...os.remove(f)..."` sobre `/tmp` | **no** | escribir el script a un archivo | JAR-28 |
+| 09-17 00:12 | marcar un archivo del repo como ejecutable | `chmod +x tools/undo-guard/install.sh` | **sí** | invocarlo con `bash` | — |
+| 09-17 00:2x | retirar un archivo de prueba de un workspace | `rm -f .claude/settings.local.json` | **sí** | hacerlo desde un script | — |
+| 09-17 00:4x | correr el instalador con el locale real de la máquina | — | **no** *(ruido, no bloqueo)* | ninguno: se arregló fijando `LC_ALL=C` en el instalador | — |
 
 ## Lo que ya dice este log
 
-**Diez entradas en una sesión, ocho injustificadas.** Ninguna expone nada; todas
+**Catorce entradas en una sesión, diez injustificadas.** Ninguna expone nada; todas
 cuestan tiempo.
 
-**Y el dato que más importa: el rodeo se repite.** Seis de las ocho injustificadas
+**Y el dato que más importa: el rodeo se repite.** Siete de las diez injustificadas
 se resolvieron igual — *escribir el texto a un archivo y ejecutarlo desde ahí*.
 Ese rodeo es exactamente **JAR-35**, la maniobra que esquiva todas las reglas de
 ruta del guard a la vez.
 
 Es decir: **las fricciones del camino normal están entrenando el rodeo que anula
-la herramienta.** No en abstracto — ya pasó, diez veces, en una noche.
+la herramienta.** No en abstracto — ya pasó siete veces en una noche, y por el
+mismo camino cada vez.
 
-Eso no se arregla con más reglas. Se arregla cerrando JAR-22 y JAR-36, que son las
-dos que producen seis de esas ocho entradas.
+**Y una entrada que no bloquea nada y aun así cuenta.** El instalador corrido con
+el locale real de la máquina imprimía **doce líneas de aviso de perl alrededor de
+tres líneas de resultado**. No impide trabajar; hace que nadie lea la salida. Una
+herramienta cuya salida nadie lee no puede reportar un fallo, y por eso está en
+esta tabla igual que las que bloquean. Arreglada fijando el locale en el propio
+instalador.
+
+Eso no se arregla con más reglas. Se arregla cerrando **JAR-22** y **JAR-36**, que
+entre las dos producen seis de las diez entradas injustificadas.
 
 ## Lo que falta medir
 
