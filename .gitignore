@@ -1,0 +1,5 @@
+
+
+# Ajustes locales de Claude Code en un workspace. El settings.local.json lleva
+# los hooks enganchados en esta maquina; no es del repositorio.
+.claude/settings.local.json
