@@ -50,10 +50,11 @@ las diez lecturas adversariales.
 | 09-17 00:5x | consultar el tablero | `curl … -H "Content-Type: application/json" …` | **no** | ninguno al primer intento | JAR-39 |
 | 09-17 00:5x | ídem, rodeando con `--json` | `curl --json @q.json …` | **no** | nombre de archivo **sin punto** | JAR-23 |
 | 09-17 01:0x | escribir el comentario de JAR-22, que nombra la ruta del guard | `cat > … <<EOF …<ruta>… EOF` | **no** | escribir el archivo con otra herramienta | JAR-22 |
+| 09-17 09:5x | restaurar el guard tras romperle la sintaxis | `git checkout -- tools/undo-guard/guard.sh` | **sí** | `git show HEAD:<archivo> >`, que es escritura y no descarte | — |
 
 ## Lo que ya dice este log
 
-**Dieciocho entradas en una sesión, trece injustificadas.** Ninguna expone nada; todas
+**Diecinueve entradas en una sesión, trece injustificadas.** Ninguna expone nada; todas
 cuestan tiempo.
 
 **Y el dato que más importa: el rodeo se repite.** Ocho de las trece injustificadas
@@ -131,8 +132,18 @@ probable de que deje de proteger — no que lo burlen, sino que alguien se harte
 
 ## Clases cerradas
 
-*(Vacío. Cuando una causa se arregle, sus entradas salen de la tabla y aparece
-aquí una línea: qué era, cuántas entradas produjo, y qué issue la cerró.)*
+*(Vacío todavía. Cuando una causa se arregle, sus entradas salen de la tabla y
+aparece aquí una línea: qué era, cuántas entradas produjo, y qué issue la cerró.)*
+
+**En camino:** JAR-38 tiene el arreglo escrito y verificado — 410 casos en verde,
+falsificación con las dos neutralizaciones — pero **no publicado**: el gate de
+pre-push exige la lectura externa del árbol exacto y la cuota del lector se agotó
+hasta el 19 de septiembre. Cuando entre, cierra la clase de **JAR-22** y **JAR-24**,
+que entre las dos produjeron siete de las trece entradas injustificadas.
+
+Esa espera es en sí misma un dato para este log: el control de publicación
+depende de un servicio externo con cuota, y cuando esa cuota se acaba el trabajo
+verificado se queda parado. No es fricción del guard, pero cuesta lo mismo.
 
 ## Lo que falta medir
 
