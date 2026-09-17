@@ -167,6 +167,19 @@ el éxito se reporta como *haber seguido el proceso*; y se acumulan nuevas sin q
 desaparezca ninguna vieja. **La prueba real es si reducen la carga de supervisión
 en las sesiones siguientes.**
 
+## Cuando una proteccion falla
+
+`docs/estrategia-de-revision-externa.md` dice cuando se paga una lectura externa
+y que se le pide. La regla de la que cuelga todo:
+
+> Si la proteccion soportada cae por debajo de la requerida, **las acciones no
+> supervisadas que dependen de ella quedan retiradas** hasta que exista una
+> frontera adecuada. Documentar el estrechamiento no restaura la autorizacion.
+
+`docs/autoridad-retirada.md` es esa regla aplicada: la lista concreta de lo que
+ningun agente hace sin supervision hoy, con la razon de cada linea y las tres
+cosas que pueden restaurarla.
+
 ## El contrato de tarea
 
 Antes de empezar un trabajo que vaya a durar, se escribe el contrato de esa
