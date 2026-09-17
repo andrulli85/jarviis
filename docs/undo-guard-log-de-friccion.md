@@ -71,6 +71,51 @@ instalador.
 Eso no se arregla con más reglas. Se arregla cerrando **JAR-22** y **JAR-36**, que
 entre las dos producen seis de las diez entradas injustificadas.
 
+## Cómo se mantiene, y por qué no debe crecer
+
+**El objetivo de este archivo es quedarse vacío.** No es un histórico que se
+acumula: es una lista de trabajo pendiente escrita en forma de síntomas.
+
+Un log que sólo crece deja de leerse alrededor de la cuarentena de filas, y a
+partir de ahí no mide nada — sólo demuestra que se anota. Así que tiene ciclo:
+
+1. **Se anota** cada bloqueo en el camino normal, con su rodeo.
+2. **Se agrupa**: varias entradas suelen ser la misma causa. Seis de las diez
+   primeras eran dos causas.
+3. **Se arregla la causa**, y entonces **las entradas de esa clase se retiran del
+   archivo** — con una línea en "Clases cerradas" que dice cuántas eran y qué las
+   cerró. El detalle vive en el issue y en el historial de git; aquí estorba.
+4. Lo que queda son las clases vivas.
+
+### Lo que se mide no es el total
+
+**Es la tasa: entradas injustificadas por sesión de trabajo.**
+
+| La tasa… | Significa |
+|---|---|
+| sube o se mantiene | los arreglos no están tocando las causas reales |
+| baja | está funcionando |
+| llega a cero | el guard dejó de estorbar, y entonces este archivo se archiva |
+
+El total sólo crece por definición y no dice nada. Que hubiera catorce entradas
+el primer día no es malo ni bueno: lo será el número del segundo día comparado
+con ése.
+
+### Y lo que este log no puede hacer
+
+No vuelve al guard infalible, y nada lo hará. **JAR-35** ya fijó el techo: un hook
+`PreToolUse` ve la llamada a herramienta y no los procesos que lanza, así que
+cualquier cosa escrita a un archivo y ejecutada lo esquiva entera. El guard es un
+interlock contra **accidentes**, y esa es la única promesa que puede cumplir.
+
+Lo que este log sí hace es evitar que el interlock se apague, que es la forma más
+probable de que deje de proteger — no que lo burlen, sino que alguien se harte.
+
+## Clases cerradas
+
+*(Vacío. Cuando una causa se arregle, sus entradas salen de la tabla y aparece
+aquí una línea: qué era, cuántas entradas produjo, y qué issue la cerró.)*
+
 ## Lo que falta medir
 
 Este log sólo ve la fricción. Cuando haya datos de un piloto real (JAR-32) hacen
