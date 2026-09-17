@@ -46,20 +46,30 @@ las diez lecturas adversariales.
 | 09-17 00:12 | marcar un archivo del repo como ejecutable | `chmod +x tools/undo-guard/install.sh` | **sí** | invocarlo con `bash` | — |
 | 09-17 00:2x | retirar un archivo de prueba de un workspace | `rm -f .claude/settings.local.json` | **sí** | hacerlo desde un script | — |
 | 09-17 00:4x | correr el instalador con el locale real de la máquina | — | **no** *(ruido, no bloqueo)* | ninguno: se arregló fijando `LC_ALL=C` en el instalador | — |
+| 09-17 00:3x | retirar el intento de JAR-36 volviendo a `origin/main` | `git reset --hard origin/main` | **sí** | dejar la rama sin mergear, que además era mejor idea: conserva el registro de las cinco formas | — |
+| 09-17 00:5x | consultar el tablero | `curl … -H "Content-Type: application/json" …` | **no** | ninguno al primer intento | JAR-39 |
+| 09-17 00:5x | ídem, rodeando con `--json` | `curl --json @q.json …` | **no** | nombre de archivo **sin punto** | JAR-23 |
+| 09-17 01:0x | escribir el comentario de JAR-22, que nombra la ruta del guard | `cat > … <<EOF …<ruta>… EOF` | **no** | escribir el archivo con otra herramienta | JAR-22 |
 
 ## Lo que ya dice este log
 
-**Catorce entradas en una sesión, diez injustificadas.** Ninguna expone nada; todas
+**Dieciocho entradas en una sesión, trece injustificadas.** Ninguna expone nada; todas
 cuestan tiempo.
 
-**Y el dato que más importa: el rodeo se repite.** Siete de las diez injustificadas
+**Y el dato que más importa: el rodeo se repite.** Ocho de las trece injustificadas
 se resolvieron igual — *escribir el texto a un archivo y ejecutarlo desde ahí*.
 Ese rodeo es exactamente **JAR-35**, la maniobra que esquiva todas las reglas de
 ruta del guard a la vez.
 
 Es decir: **las fricciones del camino normal están entrenando el rodeo que anula
-la herramienta.** No en abstracto — ya pasó siete veces en una noche, y por el
+la herramienta.** No en abstracto — ya pasó ocho veces en una noche, y por el
 mismo camino cada vez.
+
+**La octava se la ganó este archivo.** El comentario que documenta JAR-22 —el
+falso positivo de nombrar una ruta protegida en texto— fue bloqueado por JAR-22
+al escribirlo. La card sobre la fricción no se podía escribir por la fricción.
+Cuando una herramienta impide documentar su propio defecto, el defecto deja de
+documentarse mucho antes de que alguien lo arregle.
 
 **Y una entrada que no bloquea nada y aun así cuenta.** El instalador corrido con
 el locale real de la máquina imprimía **doce líneas de aviso de perl alrededor de
@@ -69,7 +79,15 @@ esta tabla igual que las que bloquean. Arreglada fijando el locale en el propio
 instalador.
 
 Eso no se arregla con más reglas. Se arregla cerrando **JAR-22** y **JAR-36**, que
-entre las dos producen seis de las diez entradas injustificadas.
+entre las dos producen siete de las trece entradas injustificadas.
+
+**Y el log ya hizo lo que un log tiene que hacer: cambió el arreglo.** Agrupadas
+por causa en vez de por síntoma, JAR-22, JAR-24 y JAR-36 son **una sola**: el
+normalizador no distingue texto que es un dato de texto que es un comando. Cinco
+intentos de parchear JAR-36 por regla fracasaron, cada uno cerrando la forma
+reportada y dejando la siguiente, hasta una quinta forma irreducible. La tabla es
+lo que hizo visible que eran la misma. Abierta **JAR-38** para la causa; las tres
+quedan bloqueadas por ella.
 
 ## Cómo se mantiene, y por qué no debe crecer
 
